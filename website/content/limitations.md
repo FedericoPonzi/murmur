@@ -8,8 +8,9 @@ identities or private information.
   nor the ring guarantees permanent storage or deletion.
 - Network attachment and replication can fail or take time. An uncertain
   publication must be checked before resending.
-- Browser identities are passphrase-protected, but backup/restore is not
-  available. Losing the passphrase or browser data loses ownership.
+- Browser identities and portable backups are passphrase-protected. Losing
+  the passphrase and all usable backups loses ownership. Restore requires
+  network access and available feed metadata.
   Native PoC credentials are not passphrase-protected.
 - The read-only bridge sees browser requests and the feeds requested.
   Local plain HTTP does not provide browser-to-server transport privacy.

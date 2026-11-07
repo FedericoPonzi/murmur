@@ -154,6 +154,8 @@ main:has(.landing) { max-width: none; padding: 0; }
 .session-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 1.5rem; align-items: start; }
 .profile-panel h1 { font-size: 1.6rem; }
 .profile-panel output { display: block; padding: .8rem; margin-top: .6rem; background: var(--background); border-radius: .6rem; }
+.profile-panel details { border-top: 1px solid var(--border); padding-top: 1rem; font-size: .85rem; }
+.profile-panel summary { cursor: pointer; font-weight: 650; color: var(--blue); }
 .connection-settings { margin-top: 1.5rem; padding-bottom: 2rem; color: var(--muted); font-size: .85rem; }
 .connection-settings summary { cursor: pointer; }
 @media (max-width: 900px) {

@@ -6,3 +6,4 @@ __pycache__/
 murmur_config.json
 pending-post.json
 *.sock
+*.murmur

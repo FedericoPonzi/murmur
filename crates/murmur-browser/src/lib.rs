@@ -493,6 +493,21 @@ impl BrowserNode {
         String::from_utf8(envelope).map_err(|_| error("Backup encoding failed"))
     }
 
+    pub fn verify_backup(&self, envelope: String, passphrase: String) -> Result<String> {
+        let passphrase = Zeroizing::new(passphrase);
+        let credentials =
+            murmur_core::credentials::Credentials::open(envelope.as_bytes(), &passphrase)
+                .map_err(core_error)?;
+        let identity = self
+            .identity
+            .as_ref()
+            .ok_or_else(|| error("Unlock an identity first"))?;
+        if credentials.record_key != identity.key || credentials.writer != identity.writer {
+            return Err(error("This backup belongs to a different identity"));
+        }
+        Ok(identity.key.to_string())
+    }
+
     pub async fn read_feed(&self, key: String) -> Result<String> {
         let key: RecordKey = key.parse().map_err(|_| error("Invalid Veilid RecordKey"))?;
         let feed = murmur_core::read_feed(

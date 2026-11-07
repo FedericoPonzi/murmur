@@ -27,7 +27,7 @@ def check(storage_only=False):
             file.write(message + "\n")
         print(message, flush=True)
 
-    server = driver = None
+    server = restore_server = driver = None
     try:
         origin = os.environ.get("MURMUR_PREVIEW_URL")
         if not origin:
@@ -39,6 +39,10 @@ def check(storage_only=False):
             options.add_argument(argument)
         if os.environ.get("CHROME"):
             options.binary_location = os.environ["CHROME"]
+        options.add_experimental_option("prefs", {
+            "download.default_directory": str(artifacts),
+            "download.prompt_for_download": False,
+        })
         driver = webdriver.Chrome(service=Service(os.environ.get("CHROMEDRIVER")), options=options)
         driver.set_window_size(1280, 900)
         wait = WebDriverWait(driver, 180)
@@ -171,6 +175,48 @@ def check(storage_only=False):
             else:
                 raise AssertionError("Native node did not confirm the browser post.")
             log("PASS: browser/native cross-reads, publication, and stable identity/feed after reload.")
+            element("backup-settings").find_element(By.TAG_NAME, "summary").click()
+            backup_passphrase = "disposable saved backup passphrase"
+            element("backup-passphrase").send_keys(backup_passphrase)
+            element("backup-confirm").send_keys(backup_passphrase)
+            element("download-backup").click()
+            backup_file = artifacts / "murmur-identity.murmur"
+            wait.until(lambda _: backup_file.is_file())
+            wait.until(lambda _: text("status").startswith("Backup prepared"))
+            assert set(json.loads(backup_file.read_text())) == {"header", "ciphertext"}
+            element("verify-file").send_keys(str(backup_file))
+            element("verify-passphrase").send_keys(backup_passphrase)
+            element("verify-backup").click()
+            wait.until(lambda _: text("status").startswith("Verified:") or "verification failed" in text("status"))
+            assert text("status").startswith("Verified:"), text("status")
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'})", element("stop"))
+            element("stop").click()
+            wait.until(lambda _: text("status") == "Identity locked.")
+            root = Path(__file__).resolve().parent.parent
+            combined = bool(os.environ.get("MURMUR_PREVIEW_URL"))
+            restore_server = create_preview_server(root / ("website/output" if combined else "browser"), port=0)
+            threading.Thread(target=restore_server.serve_forever, daemon=True).start()
+            driver.get(f"http://127.0.0.1:{restore_server.server_port}/" + ("app/" if combined else ""))
+            wait.until(lambda _: element("show-restore").is_enabled())
+            element("show-restore").click()
+            element("restore-file").send_keys(str(backup_file))
+            element("restore-passphrase").send_keys(backup_passphrase)
+            element("restore-local-passphrase").send_keys(passphrase)
+            element("restore-confirm").send_keys(passphrase)
+            element("restore-acknowledge").click()
+            element("restore-start").click()
+            storage(1)
+            assert text("own-key") == key
+            wait.until(lambda _: element("publish").is_enabled())
+            content = "Disposable post from the restored browser"
+            element("content").send_keys(content)
+            element("publish").click()
+            wait.until(lambda _: content in text("feed"))
+            assert json.loads(text("feed"))["index"] == 2
+            element("read").click()
+            wait.until(lambda _: '"posts"' in text("feed"))
+            assert [post["index"] for post in json.loads(text("feed"))["posts"]] == [2, 1, 0]
+            log("PASS: downloaded backup verification, fresh-origin UI restore, and continued publication.")
         driver.save_screenshot(str(artifacts / "result.png"))
     except Exception as failure:
         log(f"FAIL: {type(failure).__name__}: {failure}")
@@ -185,6 +231,9 @@ def check(storage_only=False):
         if server:
             server.shutdown()
             server.server_close()
+        if restore_server:
+            restore_server.shutdown()
+            restore_server.server_close()
         log(f"Artifacts: {artifacts}")
 
 

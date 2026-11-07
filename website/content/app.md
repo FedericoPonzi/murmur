@@ -10,6 +10,8 @@ bindings, then build the site with `python3 website/build.py --with-app`.
 That includes the current preview at `/app/`: create a passphrase-protected
 identity, publish posts, and read other feeds by RecordKey.
 Lock or reload the page to end the session; unlock to use the same identity.
+Download and verify an encrypted backup before valuable use. Restore only after
+stopping the old publisher.
 
 The [native read-only bridge](../docs/quick-start.html) remains available
-separately. A full composer and encrypted backup/restore are planned.
+separately. Saved follows and a combined timeline are planned.

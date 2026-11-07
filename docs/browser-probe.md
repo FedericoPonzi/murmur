@@ -73,8 +73,17 @@ New browser identities use passphrase-protected device keys and encrypted table
 values. The earlier unpassworded developer namespace is left untouched, not
 imported into the new identity. Reloading starts locked; no passphrase is saved
 by the page. Unlocking still trusts the served application code.
-Do not use this preview for valuable identities: backup and recovery are not
-available. Forgetting the passphrase or clearing browser data loses ownership.
+Before using valuable data, open **Back up your identity**, download an encrypted
+backup, and select the saved file under **Check the saved backup** to verify it.
+Keep the backup passphrase separately. Forgetting the browser passphrase or
+clearing its data without a usable backup loses ownership.
+To recover, choose **Restore from encrypted backup**, select the file, enter
+its passphrase, and choose a passphrase for the destination browser. Existing
+identities are never replaced. Stop the old publisher before restoring;
+copies are not synchronized and must not publish concurrently.
+Restore needs network access and available feed metadata. A credential backup
+does not guarantee permanent network retention. It includes pending work and
+up to 1000 locally confirmed posts, not a complete remote archive.
 Device/origin changes do not migrate the identity. One tab may unlock an identity;
 the browser lock lasts until shutdown or worker termination.
 

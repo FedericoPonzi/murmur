@@ -17,7 +17,7 @@
 <h1>A little less platform.<br>A little more <span>you.</span></h1>
 <p class="lede">Your words, signed by your identity. Create a profile in this browser, then connect directly to the Veilid network.</p>
 <p>No email. No central account. Your passphrase unlocks this browser's encrypted identity, not a server login.</p>
-<div class="app-warning"><strong>Use disposable data.</strong> Backups and recovery are not available yet. Losing your passphrase or clearing browser storage loses access to this identity. There is no password reset.</div>
+<div class="app-warning"><strong>Keep a backup.</strong> Losing your passphrase or clearing browser storage without an encrypted backup loses access to this identity. There is no password reset. This is still experimental software: use disposable data.</div>
 </div>
 <div class="app-panel">
 <div id="create-panel">
@@ -57,6 +57,28 @@
 <p class="preview-notice">Can't unlock? Check your passphrase. Damaged or missing browser data can also prevent unlocking.</p>
 <button id="show-create" class="quiet-button" disabled>Create or complete identity setup</button>
 </div>
+<div id="restore-panel" hidden>
+<p class="eyebrow">Bring your identity with you</p>
+<h2>Restore a backup</h2>
+<p>Restore into a browser without an existing identity. Network access is required to verify your feed's ownership.</p>
+<form id="restore-form">
+<fieldset id="restore-fields" disabled>
+<label for="restore-file">Encrypted backup</label>
+<input id="restore-file" type="file" accept=".murmur,application/json" required>
+<label for="restore-passphrase">Backup passphrase</label>
+<input id="restore-passphrase" type="password" autocomplete="off" required>
+<label for="restore-local-passphrase">Passphrase for this browser</label>
+<input id="restore-local-passphrase" type="password" autocomplete="new-password" required>
+<label for="restore-confirm">Confirm browser passphrase</label>
+<input id="restore-confirm" type="password" autocomplete="new-password" required>
+<label class="check-line"><input id="restore-acknowledge" type="checkbox" required><span>The old publisher is stopped. I will not publish from two restored copies at once.</span></label>
+<button id="restore-start" type="submit" disabled>Restore identity</button>
+</fieldset>
+</form>
+<p class="preview-notice">Existing identities are never replaced. If setup was interrupted, retry with the same browser passphrase.</p>
+<button id="restore-back" class="quiet-button">Back to identity setup</button>
+</div>
+<button id="show-restore" class="quiet-button" disabled>Restore from encrypted backup</button>
 </div>
 </section>
 <section id="session" class="session-layout" hidden>
@@ -69,6 +91,28 @@
 <p class="preview-notice">Share this key so others can read your feed.</p>
 <button id="stop" class="quiet-button" disabled>Lock identity</button>
 <p class="preview-notice">Locking or closing this tab stops its node. Reloading starts locked.</p>
+<details id="backup-settings">
+<summary>Back up your identity</summary>
+<p class="preview-notice">Download and check a backup before using valuable data. Keep its passphrase separately. Backups are not permanent network archives.</p>
+<form id="backup-form">
+<fieldset id="backup-fields" disabled>
+<label for="backup-passphrase">Backup passphrase</label>
+<input id="backup-passphrase" type="password" autocomplete="new-password" required>
+<label for="backup-confirm">Confirm backup passphrase</label>
+<input id="backup-confirm" type="password" autocomplete="new-password" required>
+<button id="download-backup" type="submit" disabled>Download encrypted backup</button>
+</fieldset>
+</form>
+<form id="verify-form">
+<fieldset id="verify-fields" disabled>
+<label for="verify-file">Check the saved backup</label>
+<input id="verify-file" type="file" accept=".murmur,application/json" required>
+<label for="verify-passphrase">Its backup passphrase</label>
+<input id="verify-passphrase" type="password" autocomplete="off" required>
+<button id="verify-backup" type="submit" disabled>Verify saved backup</button>
+</fieldset>
+</form>
+</details>
 </aside>
 <div class="app-panel">
 <p class="eyebrow">Your voice</p>
