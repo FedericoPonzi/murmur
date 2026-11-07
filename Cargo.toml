@@ -5,8 +5,13 @@ edition = "2021"
 rust-version = "1.89"
 license = "MIT"
 
+[workspace]
+members = ["crates/murmur-model"]
+resolver = "2"
+
 [dependencies]
 axum = "0.8"
+murmur-model = { path = "crates/murmur-model" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "signal"] }

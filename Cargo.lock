@@ -1592,12 +1592,21 @@ name = "murmur"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "murmur-model",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
  "tower",
  "veilid-core",
+]
+
+[[package]]
+name = "murmur-model"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

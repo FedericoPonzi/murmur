@@ -10,8 +10,11 @@ SSH -> murmur post -> private Unix socket -> same Node -> Veilid DHT
 ```
 
 `main.rs` handles CLI arguments, process/storage locking, local IPC, and lifecycle.
-`veilid.rs` handles identity, attachment, DHT I/O, ring indexing, and recovery.
+`veilid.rs` handles identity, attachment, DHT I/O, and recovery.
 `web.rs` serves GET handlers and embeds `index.html` with `include_str!`.
+The workspace's `murmur-model` crate owns public feed types, validation,
+ring indexing, and owner-only schema counts. It depends only on Serde, not on
+Veilid, Tokio, Axum, or native storage; transport-specific errors stay native.
 The frontend uses plain JavaScript and renders untrusted text with `textContent`.
 Small `RecordIo`/`FeedSource` seams allow behavior tests without Internet access;
 there is no external Veilid daemon, database server, or JavaScript framework.
@@ -26,9 +29,9 @@ development/test compiler memory. On memory-constrained hosts, build with
 `CARGO_BUILD_JOBS=1`; release compilation still needs substantial RAM.
 
 ```sh
-cargo fmt --check
-cargo test --locked
-cargo clippy --locked --all-targets -- -D warnings
+cargo fmt --all --check
+cargo test --workspace --locked
+cargo clippy --workspace --locked --all-targets -- -D warnings
 cargo build --release
 ```
 

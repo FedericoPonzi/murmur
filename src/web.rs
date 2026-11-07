@@ -1,4 +1,4 @@
-use crate::veilid::{Error, Feed, Result};
+use crate::veilid::{Error, Result};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -6,6 +6,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use murmur_model::Feed;
 use serde::Serialize;
 use std::{future::Future, sync::Arc};
 use veilid_core::RecordKey;
@@ -69,11 +70,11 @@ async fn feed<S: FeedSource>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::veilid::{Metadata, Post};
     use axum::{
         body::{to_bytes, Body},
         http::{Request, StatusCode},
     };
+    use murmur_model::{Metadata, Post};
     use tower::ServiceExt;
 
     struct FakeSource {

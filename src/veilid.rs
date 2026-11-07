@@ -1,3 +1,7 @@
+use murmur_model::{
+    next_index, post_subkey, recent_indexes, validate_profile, Feed, Metadata, ModelError, Post,
+    OWNER_SUBKEYS,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File, OpenOptions},
@@ -16,24 +20,6 @@ use veilid_core::{
     api_startup, AllowOffline, DHTSchema, KeyPair, RecordKey, RoutingContext, SetDHTValueOptions,
     VeilidAPI, VeilidAPIError, VeilidConfig, VeilidUpdate, CRYPTO_KIND_VLD0,
 };
-
-const CAPACITY: u64 = 100;
-const FEED_LIMIT: u64 = 20;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Metadata {
-    pub author_name: String,
-    pub bio: String,
-    #[serde(deserialize_with = "Option::deserialize")]
-    pub latest_post_index: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Post {
-    pub index: u64,
-    pub timestamp: u64,
-    pub content: String,
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
@@ -80,6 +66,18 @@ impl From<&str> for Error {
     }
 }
 
+impl From<ModelError> for Error {
+    fn from(error: ModelError) -> Self {
+        let status = match error {
+            ModelError::InvalidContent => 400,
+            ModelError::InvalidProfile => 500,
+            ModelError::InvalidSchema => 502,
+            ModelError::IndexExhausted => 409,
+        };
+        Self::new(status, error.to_string())
+    }
+}
+
 impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
         veilid_core::tracing::error!(%error, "local I/O failure");
@@ -104,13 +102,6 @@ impl From<VeilidAPIError> for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Serialize)]
-pub struct Feed {
-    pub record_key: String,
-    pub metadata: Metadata,
-    pub posts: Vec<Post>,
-}
 
 pub async fn deadline<T>(future: impl Future<Output = Result<T>>, seconds: u64) -> Result<T> {
     tokio::time::timeout(Duration::from_secs(seconds), future)
@@ -161,15 +152,7 @@ trait RecordIo {
 }
 
 fn validate_config(config: &Config) -> Result<()> {
-    if config.author_name.trim().is_empty()
-        || config.author_name.chars().count() > 80
-        || config.bio.chars().count() > 280
-    {
-        return Err(Error::new(
-            500,
-            "profile needs a nonblank name (max 80 characters) and bio (max 280)",
-        ));
-    }
+    validate_profile(&config.author_name, &config.bio)?;
     match (&config.record_key, &config.writer) {
         (None, None) => Ok(()),
         (Some(key), Some(writer))
@@ -186,8 +169,11 @@ fn validate_config(config: &Config) -> Result<()> {
 
 fn validate_schema(schema: &DHTSchema) -> Result<()> {
     match schema {
-        DHTSchema::SMPL(schema) if schema.o_cnt() == 101 && schema.members().is_empty() => Ok(()),
-        _ => Err("incompatible feed schema (expected 101 owner-only SMPL subkeys)".into()),
+        DHTSchema::SMPL(schema) => {
+            murmur_model::validate_schema(schema.o_cnt(), schema.members().len())
+                .map_err(Into::into)
+        }
+        _ => Err(ModelError::InvalidSchema.into()),
     }
 }
 
@@ -232,12 +218,8 @@ fn encode(value: &impl Serialize) -> Result<Vec<u8>> {
 async fn read_metadata(record: &impl RecordIo) -> Result<Metadata> {
     let bytes = record.get(0).await?.ok_or("feed metadata is missing")?;
     let metadata: Metadata = decode(&bytes)?;
-    if metadata.author_name.trim().is_empty()
-        || metadata.author_name.chars().count() > 80
-        || metadata.bio.chars().count() > 280
-    {
-        return Err("invalid feed profile".into());
-    }
+    validate_profile(&metadata.author_name, &metadata.bio)
+        .map_err(|_| Error::new(502, "invalid feed profile"))?;
     Ok(metadata)
 }
 
@@ -290,36 +272,8 @@ async fn commit_post(record: &impl RecordIo, metadata: &Metadata, post: &Post) -
     record.set(0, encode(&updated)?).await
 }
 
-fn next_index(latest: Option<u64>) -> Result<u64> {
-    match latest {
-        None => Ok(0),
-        Some(index) => index
-            .checked_add(1)
-            .ok_or_else(|| Error::new(409, "post index exhausted")),
-    }
-}
-
-fn post_subkey(index: u64) -> u32 {
-    1 + (index % CAPACITY) as u32
-}
-
-fn recent_indexes(latest: Option<u64>) -> Vec<u64> {
-    match latest {
-        None => vec![],
-        Some(latest) => (latest.saturating_sub(FEED_LIMIT - 1)..=latest)
-            .rev()
-            .collect(),
-    }
-}
-
 pub fn validate_content(content: &str) -> Result<()> {
-    if content.trim().is_empty() || content.chars().count() > 280 {
-        return Err(Error::new(
-            400,
-            "post must be nonblank and at most 280 characters",
-        ));
-    }
-    Ok(())
+    murmur_model::validate_content(content).map_err(Into::into)
 }
 
 struct VeilidRecord<'a> {
@@ -433,7 +387,11 @@ impl Node {
                 }
             } else {
                 let descriptor = context
-                    .create_dht_record(CRYPTO_KIND_VLD0, DHTSchema::smpl(101, vec![])?, None)
+                    .create_dht_record(
+                        CRYPTO_KIND_VLD0,
+                        DHTSchema::smpl(OWNER_SUBKEYS, vec![])?,
+                        None,
+                    )
                     .await?;
                 config.record_key = Some(descriptor.key());
                 config.writer = Some(
@@ -693,28 +651,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_first_and_wrapped_feed() {
-        assert!(recent_indexes(None).is_empty());
-        assert_eq!(recent_indexes(Some(0)), vec![0]);
-        assert_eq!(post_subkey(0), 1);
-        assert_eq!(post_subkey(99), 100);
-        assert_eq!(post_subkey(100), 1);
-        assert_eq!(
-            recent_indexes(Some(105)),
-            (86..=105).rev().collect::<Vec<_>>()
-        );
-        assert_eq!(recent_indexes(Some(u64::MAX)).len(), 20);
-    }
-
-    #[test]
-    fn validates_blank_and_unicode_post_limits() {
-        assert!(validate_content(" \n\t").is_err());
-        assert!(validate_content(&"猫".repeat(280)).is_ok());
-        assert!(validate_content(&"猫".repeat(281)).is_err());
-        assert!(validate_content("hello").is_ok());
-    }
-
-    #[test]
     fn rejects_incomplete_identity_and_incompatible_schema() {
         let mut config = Config {
             author_name: "Test".into(),
@@ -730,7 +666,6 @@ mod tests {
         )
         .is_err());
         assert!(serde_json::from_str::<Config>(r#"{"author_name":"x","bio":""}"#).is_err());
-        assert!(decode::<Metadata>(br#"{"author_name":"x","bio":""}"#).is_err());
         config.author_name = "Test".into();
         config.record_key = Some(
             "VLD0:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
