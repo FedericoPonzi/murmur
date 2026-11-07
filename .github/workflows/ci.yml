@@ -18,6 +18,19 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  site:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - name: Install Genereto
+        run: cargo install --git https://github.com/FedericoPonzi/genereto --rev 9a21250e4dcfb93bc7b03cb003619e621ae0b6c4 --locked
+      - name: Check generated site
+        run: node --test website/build.test.mjs
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 45

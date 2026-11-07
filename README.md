@@ -47,6 +47,12 @@ and a Cap'n Proto compiler are not required for the normal locked build.
 See [user guide](docs/user-guide.md) and [developer guide](docs/dev-guide.md)
 for profile configuration, API details, testing, and build troubleshooting.
 
+## Website preview
+
+The Genereto site hosts these guides and the current platform status.
+It is not yet the integrated browser application.
+See [building the website](docs/dev-guide.md#website-preview).
+
 ## License
 
 Murmur's own code is [MIT licensed](LICENSE). Dependencies retain their own

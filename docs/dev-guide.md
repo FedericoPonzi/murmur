@@ -53,6 +53,27 @@ Dependency versions are resolved in `Cargo.lock`; `veilid-core` is pinned to
 0.5.8 with only `rt-tokio` and `enable-crypto-vld0`. Older Veilid examples use
 different startup and DHT method signatures.
 
+## Website preview
+
+Install Node.js (18+) and [Genereto](https://github.com/FedericoPonzi/genereto)
+0.4.4 as build tools. From the repository root:
+
+```sh
+cargo install --git https://github.com/FedericoPonzi/genereto --rev 9a21250e4dcfb93bc7b03cb003619e621ae0b6c4 --locked
+node website/build.mjs
+node --test website/build.test.mjs
+python3 -m http.server 8000 --bind 127.0.0.1 --directory website/output
+```
+
+Open `http://localhost:8000`. The build uses one template and renders this
+repository's README and `docs/*.md` into `/docs/`; do not maintain duplicate
+guide copies. Links are relative so the preview also works under a base path.
+Genereto's local checks run before output is replaced; no live external-link
+checks or deployment are required. Generated files are ignored.
+
+The `/app/` page describes the separate probe; app integration is the next
+increment. To use a Genereto binary outside `PATH`, set `GENERETO` to its path.
+
 ## Identity and embedded node
 
 `murmur [--data-dir PATH] serve` acquires an OS file lock before opening stores.
