@@ -72,7 +72,8 @@ jobs:
           cargo build -p murmur-browser --target wasm32-unknown-unknown --release --locked --features vault-tests
           mkdir -p "$RUNNER_TEMP/murmur-vault-tests"
           wasm-bindgen --target web --out-dir "$RUNNER_TEMP/murmur-vault-tests/pkg" target/wasm32-unknown-unknown/release/murmur_browser.wasm
-          cp browser/vault-tests.html browser/worker.mjs browser/storage-tests.html browser/storage-tests.mjs browser/storage-snapshot.mjs browser/test-worker.mjs browser/identity-tests.html browser/identity-tests.mjs "$RUNNER_TEMP/murmur-vault-tests/"
+          cp browser/vault-tests.html browser/worker.mjs browser/storage-tests.html browser/storage-tests.mjs browser/storage-snapshot.mjs browser/test-worker.mjs browser/identity-tests.html browser/identity-tests.mjs browser/reader-tests.html browser/reader-tests.mjs "$RUNNER_TEMP/murmur-vault-tests/"
           python3 browser/check.py --root "$RUNNER_TEMP/murmur-vault-tests" --page vault-tests.html
           python3 browser/check.py --root "$RUNNER_TEMP/murmur-vault-tests" --page storage-tests.html
           python3 browser/check.py --root "$RUNNER_TEMP/murmur-vault-tests" --page identity-tests.html
+          python3 browser/check.py --root "$RUNNER_TEMP/murmur-vault-tests" --page reader-tests.html

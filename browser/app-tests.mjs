@@ -8,12 +8,14 @@ const wait = async condition => {
 };
 function installWorker() {
   window.networkReady = false;
+  window.authorStarts = 0;
   window.confirm = () => false;
   const identity = { record_key: 'VLD0:disposable', author_name: 'Disposable author', bio: '', probe_post: null,
     draft: '', history: [{ index: 0, timestamp: 1, content: 'Existing <b>literal</b> post' }] };
   window.Worker = class {
     postMessage({ id, action, value }) {
       value = structuredClone(value);
+      if (['create', 'unlock', 'restore'].includes(action)) window.authorStarts++;
       if (action === 'publish') window.publishCalls = (window.publishCalls ?? 0) + 1;
       if (action === 'draft' && !window.failDraft) {
         identity.draft = window.lastSavedDraft = value;
@@ -27,6 +29,9 @@ function installWorker() {
         backup: '{"header":{"version":1},"ciphertext":[1]}',
         verify_backup: identity.record_key,
         profile: identity, update_profile: identity,
+        read_only: { starts: 1, reader: true, protected: false, identity: null },
+        read: { record_key: 'VLD0:remote', metadata: { author_name: 'Remote <b>author</b>', bio: '' },
+          posts: [{ index: 0, timestamp: 1, content: 'A guest-readable <b>post</b>' }] },
       };
       const error = action === 'restore' && value.backup_passphrase !== 'disposable backup passphrase'
         ? 'Wrong passphrase or damaged credential envelope'
@@ -123,6 +128,21 @@ try {
   fillRestore('disposable backup passphrase');
   await wait(() => !element('session').hidden);
   assert(element('own-key').textContent === 'VLD0:disposable', 'Restore changed the identity key.');
+  element('stop').click();
+  await wait(() => !element('auth').hidden);
+  assert(element('browse-start'), 'Missing identity-free reading.');
+  const authorStarts = frame.contentWindow.authorStarts;
+  element('browse-start').click();
+  await wait(() => !element('session').hidden);
+  assert(element('identity-panel').hidden && element('author-tools').hidden, 'Guest was shown publishing tools.');
+  await wait(() => !element('read').disabled);
+  element('key').value = 'VLD0:remote';
+  element('read').click();
+  await wait(() => element('feed-cards').textContent.includes('guest-readable'));
+  assert(!element('feed-cards').querySelector('b'), 'Guest content was interpreted as markup.');
+  assert(frame.contentWindow.authorStarts === authorStarts, 'Guest started an author session.');
+  element('stop-reader').click();
+  await wait(() => !element('auth').hidden);
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.message}`;

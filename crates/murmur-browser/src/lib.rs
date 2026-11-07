@@ -94,11 +94,17 @@ pub struct BrowserNode {
     identity: Option<TestIdentity>,
     starts: u64,
     protected: bool,
+    reader: bool,
 }
 
 #[wasm_bindgen]
 pub async fn start_node(bootstrap: String) -> Result<BrowserNode> {
-    start(bootstrap, None).await
+    start(bootstrap, None, false).await
+}
+
+#[wasm_bindgen]
+pub async fn start_reader_node(bootstrap: String) -> Result<BrowserNode> {
+    start(bootstrap, None, true).await
 }
 
 #[wasm_bindgen]
@@ -109,7 +115,7 @@ pub async fn start_protected_node(bootstrap: String, passphrase: String) -> Resu
 async fn start_protected(bootstrap: String, passphrase: Zeroizing<String>) -> Result<BrowserNode> {
     murmur_core::vault::validate_passphrase(&passphrase)
         .map_err(|failure| error(&failure.to_string()))?;
-    start(bootstrap, Some(passphrase)).await
+    start(bootstrap, Some(passphrase), false).await
 }
 
 #[wasm_bindgen]
@@ -250,9 +256,15 @@ async fn start_identity(
     }
 }
 
-async fn start(bootstrap: String, passphrase: Option<Zeroizing<String>>) -> Result<BrowserNode> {
+async fn start(
+    bootstrap: String,
+    passphrase: Option<Zeroizing<String>>,
+    reader: bool,
+) -> Result<BrowserNode> {
     let protected = passphrase.is_some();
-    let namespace = if protected {
+    let namespace = if reader {
+        "murmur-browser-reader"
+    } else if protected {
         "murmur-browser-identity"
     } else {
         "murmur-browser-probe"
@@ -273,10 +285,16 @@ async fn start(bootstrap: String, passphrase: Option<Zeroizing<String>>) -> Resu
     let initialize = async {
         let context = api.routing_context().map_err(api_error)?;
         let table = api.open_table_db("probe", 1).await.map_err(api_error)?;
-        let identity = table
+        let stored_identity = table
             .load(0, b"identity".to_vec().into())
             .await
-            .map_err(api_error)?
+            .map_err(api_error)?;
+        if reader && stored_identity.is_some() {
+            return Err(error(
+                "Unexpected author data in reader storage; refusing to open it",
+            ));
+        }
+        let identity = stored_identity
             .map(|bytes| decode::<TestIdentity>(&bytes))
             .transpose()?;
         if let Some(identity) = &identity {
@@ -314,6 +332,7 @@ async fn start(bootstrap: String, passphrase: Option<Zeroizing<String>>) -> Resu
             identity,
             starts,
             protected,
+            reader,
         }),
         Err(failure) => {
             api.shutdown().await;
@@ -345,6 +364,7 @@ impl BrowserNode {
             "starts": self.starts,
             "ready": state.attachment.public_internet_ready,
             "protected": self.protected,
+            "reader": self.reader,
         }))?)
         .map_err(|_| error("JSON encoding failed"))
     }
@@ -406,6 +426,9 @@ impl BrowserNode {
     }
 
     pub async fn identity_key(&mut self) -> Result<String> {
+        if self.reader {
+            return Err(error("Guest readers cannot initialize an author feed"));
+        }
         self.require_ready().await?;
         if let Some(identity) = &self.identity {
             let descriptor = self
@@ -729,6 +752,9 @@ impl BrowserNode {
     }
 
     async fn create_identity(&mut self, profile: Option<Metadata>) -> Result<()> {
+        if self.reader {
+            return Err(error("Guest readers cannot create author credentials"));
+        }
         let descriptor = self
             .context
             .create_dht_record(

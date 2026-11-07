@@ -237,6 +237,25 @@ def check(storage_only=False):
             wait.until(lambda _: '"posts"' in text("feed"))
             assert [post["index"] for post in json.loads(text("feed"))["posts"]] == [2, 1, 0]
             log("PASS: downloaded backup verification, fresh-origin UI restore, and continued publication.")
+            click("stop")
+            wait.until(lambda _: text("status") == "Identity locked.")
+            click("browse-start")
+            storage(1)
+            assert not element("identity-panel").is_displayed()
+            assert not element("author-tools").is_displayed()
+            wait.until(lambda _: element("read").is_enabled())
+            element("key").send_keys(key)
+            click("read")
+            wait.until(lambda _: '"posts"' in text("feed"))
+            assert [post["index"] for post in json.loads(text("feed"))["posts"]] == [2, 1, 0]
+            assert not element("publish").is_enabled()
+            click("stop-reader")
+            wait.until(lambda _: text("status") == "Reader stopped.")
+            element("unlock-passphrase").send_keys(passphrase)
+            click("unlock-start")
+            storage(2)
+            assert text("own-key") == key
+            log("PASS: guest reads with a locked local author, then unlock preserves the same identity.")
         driver.save_screenshot(str(artifacts / "result.png"))
     except Exception as failure:
         log(f"FAIL: {type(failure).__name__}: {failure}")

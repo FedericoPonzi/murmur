@@ -29,6 +29,9 @@ RecordKey. **Copy RecordKey** lets another reader find the same feed.
 Lock or reload the page, then unlock with the same passphrase to restore the
 same key and posts. An uncertain publication keeps its original text for retry;
 confirmation releases the composer without advancing the index twice.
+To read without creating or unlocking an author, choose **Read without an
+identity** and paste a complete RecordKey. This uses a separate read-only node;
+it cannot initialize a feed or publish. **Stop reading** ends that session.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.

@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
 let active = false, attached = false, busy = false, authenticating = true, mode = 'create';
-let publicIdentity, draftTimer, draftVersion = 0;
+let publicIdentity, draftTimer, draftVersion = 0, guest = false;
 const requests = new Map();
 const clearPassphrases = () => {
   for (const id of ['passphrase', 'confirm-passphrase', 'unlock-passphrase', 'restore-passphrase',
@@ -50,18 +50,20 @@ const showFeed = result => {
 };
 const controls = () => {
   for (const id of ['create-fields', 'unlock-fields', 'restore-fields', 'start', 'unlock-start',
-    'restore-start', 'show-create', 'show-unlock', 'show-restore', 'restore-back']) $(id).disabled = authenticating || active;
-  for (const id of ['backup-fields', 'download-backup']) $(id).disabled = !active || !attached || busy;
-  for (const id of ['verify-fields', 'verify-backup']) $(id).disabled = !active || busy;
-  for (const id of ['profile-fields', 'save-profile']) $(id).disabled = !active || !attached || busy;
-  $('copy-key').disabled = !active;
+    'restore-start', 'show-create', 'show-unlock', 'show-restore', 'restore-back', 'browse-start']) $(id).disabled = authenticating || active;
+  for (const id of ['backup-fields', 'download-backup']) $(id).disabled = !active || guest || !attached || busy;
+  for (const id of ['verify-fields', 'verify-backup']) $(id).disabled = !active || guest || busy;
+  for (const id of ['profile-fields', 'save-profile']) $(id).disabled = !active || guest || !attached || busy;
+  $('copy-key').disabled = !active || guest;
   $('reconnect').disabled = !active || attached || busy;
+  $('retry-reader').disabled = !active || attached || busy;
+  $('stop-reader').disabled = !active;
   $('publish').textContent = $('content').readOnly ? 'Retry saved post' : 'Publish post';
   $('publish').disabled = $('read').disabled = !active || !attached || busy;
   const length = Array.from($('content').value).length;
   $('content-count').textContent = `${length} / 280`;
-  $('publish').disabled ||= !length || length > 280 || !$('content').value.trim();
-  $('content').disabled = busy;
+  $('publish').disabled ||= guest || !length || length > 280 || !$('content').value.trim();
+  $('content').disabled = busy || guest;
   $('stop').disabled = !active || busy;
   $('bootstrap').disabled = active || authenticating;
 };
@@ -70,6 +72,9 @@ const showMode = next => {
   clearPassphrases();
   $('auth').hidden = active;
   $('session').hidden = !active;
+  $('session').classList.toggle('reader-session', guest);
+  for (const id of ['identity-panel', 'author-tools', 'history-tools']) $(id).hidden = guest;
+  $('reader-tools').hidden = !guest;
   $('create-panel').hidden = mode !== 'create';
   $('unlock-panel').hidden = mode !== 'unlock';
   $('restore-panel').hidden = mode !== 'restore';
@@ -89,6 +94,7 @@ const finish = message => {
   }
   requests.clear();
   active = attached = busy = authenticating = false;
+  guest = false;
   for (const id of ['profile-name', 'profile-bio', 'own-key', 'feed', 'feed-cards', 'authored-history', 'draft-status', 'storage']) $(id).textContent = '';
   publicIdentity = undefined;
   $('key').value = $('content').value = '';
@@ -120,7 +126,8 @@ const makeWorker = () => {
 const call = (action, value, timeout = 180000) => new Promise((resolve, reject) => {
   const id = ++sequence;
   const timer = setTimeout(() => {
-    finish(action === 'publish'
+    finish(guest ? 'Read operation timed out. Reader stopped; start reading again to retry.'
+      : action === 'publish'
       ? 'Publication confirmation timed out. Identity locked; unlock and retry only the saved text.'
       : 'Operation timed out. Identity locked; unlock to retry.');
   }, timeout);
@@ -142,17 +149,23 @@ const watchAttachment = run => {
       const state = await call('status');
       if (run !== generation || busy) return;
       if (state.ready && !attached) {
-        await call('identity');
-        const identity = await call('reconcile');
+        let identity;
+        if (!guest) {
+          await call('identity');
+          identity = await call('reconcile');
+        }
         if (run !== generation || busy) return;
-        if (identity.probe_post) $('content').value = identity.probe_post.content;
-        else if ($('content').readOnly) $('content').value = '';
-        $('content').readOnly = !!identity.probe_post;
-        showIdentity(identity);
+        if (identity) {
+          if (identity.probe_post) $('content').value = identity.probe_post.content;
+          else if ($('content').readOnly) $('content').value = '';
+          $('content').readOnly = !!identity.probe_post;
+          showIdentity(identity);
+        }
         attached = true;
         expired = false;
         controls();
-        $('status').textContent = identity.probe_post
+        $('status').textContent = guest ? 'Connected to Veilid. Read-only session ready.'
+          : identity.probe_post
           ? 'Connected. A publication needs confirmation; retry only its saved text.'
           : 'Connected to Veilid. Ready to publish and read.';
       } else if (!state.ready) {
@@ -177,6 +190,27 @@ const watchAttachment = run => {
       }
     } finally { checking = false; }
   }, 1000);
+};
+$('browse-start').onclick = async () => {
+  const run = ++generation;
+  guest = true;
+  authenticating = true;
+  clearPassphrases();
+  controls();
+  $('status').textContent = 'Starting read-only Veilid node...';
+  try {
+    makeWorker();
+    const state = await call('read_only');
+    if (run !== generation) return;
+    if (!state.reader || state.identity !== null) throw new Error('Reader did not return an author-free session.');
+    active = true;
+    authenticating = false;
+    $('storage').textContent = String(state.starts);
+    showMode(mode);
+    controls();
+    $('status').textContent = 'Reader started. Connecting to Veilid...';
+    watchAttachment(run);
+  } catch (failure) { if (run === generation) finish(`Reader failed: ${failure.message}`); }
 };
 const authenticate = async (action, value) => {
   const run = ++generation;
@@ -237,7 +271,7 @@ $('show-unlock').onclick = () => showMode('unlock');
 $('show-restore').onclick = () => showMode('restore');
 $('restore-back').onclick = () => showMode('create');
 const saveDraft = async () => {
-  if (!active || $('content').readOnly) return true;
+  if (!active || guest || $('content').readOnly) return true;
   const run = generation, version = ++draftVersion;
   $('draft-status').textContent = 'Saving draft...';
   try {
@@ -293,6 +327,8 @@ $('reconnect').onclick = async () => {
     if (run === generation) $('status').textContent = `Reconnect failed: ${failure.message}`;
   } finally { if (run === generation) { busy = false; controls(); } }
 };
+$('retry-reader').onclick = () => $('reconnect').onclick();
+$('stop-reader').onclick = () => finish('Reader stopped.');
 const readBackup = async id => {
   const file = $(id).files[0];
   if (!file) throw new Error('Select an encrypted backup.');

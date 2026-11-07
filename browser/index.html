@@ -79,10 +79,11 @@
 <button id="restore-back" class="quiet-button">Back to identity setup</button>
 </div>
 <button id="show-restore" class="quiet-button" disabled>Restore from encrypted backup</button>
+<button id="browse-start" class="quiet-button" disabled>Read without an identity</button>
 </div>
 </section>
 <section id="session" class="session-layout" hidden>
-<aside class="app-panel profile-panel">
+<aside id="identity-panel" class="app-panel profile-panel">
 <p class="eyebrow">Your identity</p>
 <h1 id="profile-name"></h1>
 <p id="profile-bio"></p>
@@ -129,6 +130,14 @@
 </details>
 </aside>
 <div class="app-panel">
+<div id="reader-tools" hidden>
+<p class="eyebrow">Just here to read</p>
+<h1>Find a voice worth following.</h1>
+<p>Your author identity stays locked. This node reads public feeds only.</p>
+<button id="stop-reader" class="quiet-button" disabled>Stop reading</button>
+<button id="retry-reader" class="quiet-button" disabled>Retry connection</button>
+</div>
+<div id="author-tools">
 <p class="eyebrow">Your voice</p>
 <h2>Share a thought</h2>
 <p class="preview-notice">Posts and profile information are public. Your feed shows the newest 20 posts from 100 retained network slots.</p>
@@ -138,14 +147,17 @@
 <output id="content-count" aria-live="polite">0 / 280</output>
 <small id="draft-status" role="status"></small>
 <button id="publish" disabled>Publish post</button>
+</div>
 <label for="key">Read a feed by RecordKey</label>
 <input id="key" spellcheck="false">
 <button id="read" disabled>Read feed</button>
 <section id="feed-cards" aria-label="Read feed"></section>
 <details><summary>Response details</summary><pre id="feed" aria-label="Feed response"></pre></details>
+<div id="history-tools">
 <h2>Your saved posts</h2>
 <p class="preview-notice">Up to 1000 locally confirmed posts. This is not a permanent network archive.</p>
 <section id="authored-history" aria-label="Local authored history"></section>
+</div>
 </div>
 </section>
 <p id="status" role="status">Checking local identity...</p>

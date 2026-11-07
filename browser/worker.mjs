@@ -14,7 +14,7 @@ export function checkEnvironment(scope, bootstrap) {
 }
 
 if (typeof self !== 'undefined') {
-  let node, release, running;
+  let node, release, running, readOnly = false;
   let queue = Promise.resolve();
   const send = (id, result, failure) => self.postMessage({ id, result, error: failure });
   self.onmessage = ({ data }) => {
@@ -43,9 +43,10 @@ if (typeof self !== 'undefined') {
         if (data.action === 'has_storage') {
           checkEnvironment(self, data.bootstrap);
           send(data.id, await hasStorage());
-        } else if (data.action === 'start' || data.action === 'start_protected' || authenticating) {
+        } else if (['start', 'start_protected', 'read_only'].includes(data.action) || authenticating) {
           if (running) throw new Error('The probe is already running.');
-          const protectedStart = data.action !== 'start';
+          const readerStart = data.action === 'read_only';
+          const protectedStart = data.action !== 'start' && !readerStart;
           if (protectedStart && typeof passphrase !== 'string') throw new Error('Passphrase must be a string.');
           const bootstrap = checkEnvironment(self, data.bootstrap);
           if (data.action === 'unlock' && !await hasStorage()) throw new Error('No local identity. Create one first.');
@@ -56,7 +57,8 @@ if (typeof self !== 'undefined') {
             throw new Error('Provide an encrypted backup and its passphrase.');
           }
           const started = new Promise((resolve, reject) => {
-            const namespace = protectedStart ? 'murmur-browser-identity' : 'murmur-browser-probe';
+            const namespace = readerStart ? 'murmur-browser-reader'
+              : protectedStart ? 'murmur-browser-identity' : 'murmur-browser-probe';
             running = navigator.locks.request(namespace, { ifAvailable: true }, async lock => {
               if (!lock) throw new Error('Another tab owns the probe. Stop it before starting this tab.');
               const stopped = new Promise(done => { release = done; });
@@ -64,7 +66,9 @@ if (typeof self !== 'undefined') {
               await wasm.default();
               try {
                 try {
-                  if (data.action === 'create') {
+                  if (readerStart) {
+                    node = await wasm.start_reader_node(bootstrap);
+                  } else if (data.action === 'create') {
                     node = await wasm.create_profile_node(bootstrap, passphrase, data.value.author_name, data.value.bio);
                   } else if (data.action === 'unlock') {
                     node = await wasm.unlock_profile_node(bootstrap, passphrase);
@@ -74,8 +78,9 @@ if (typeof self !== 'undefined') {
                     node = protectedStart ? await wasm.start_protected_node(bootstrap, passphrase) : await wasm.start_node(bootstrap);
                   }
                 } finally { passphrase = backupPassphrase = undefined; }
+                readOnly = readerStart;
                 const state = JSON.parse(await node.status());
-                if (authenticating) state.identity = JSON.parse(node.local_identity());
+                if (authenticating || readerStart) state.identity = JSON.parse(node.local_identity());
                 resolve(state);
                 await stopped;
               } finally {
@@ -95,6 +100,9 @@ if (typeof self !== 'undefined') {
           send(data.id, 'Stopped.');
         } else {
           if (!node) throw new Error('Start the node first.');
+          if (readOnly && !['status', 'profile', 'read', 'reconnect'].includes(data.action)) {
+            throw new Error('Guest readers cannot use author operations.');
+          }
           if (['backup', 'verify_backup'].includes(data.action) && typeof passphrase !== 'string') throw new Error('Passphrase must be a string.');
           if (data.action === 'verify_backup' && typeof data.value?.backup !== 'string') throw new Error('Provide an encrypted backup.');
           const methods = { status: 'status', profile: 'local_identity', identity: 'identity_key', reconcile: 'reconcile_pending', publish: 'publish_post', read: 'read_feed', backup: 'export_backup', verify_backup: 'verify_backup', draft: 'save_draft', update_profile: 'update_profile', reconnect: 'reconnect',
