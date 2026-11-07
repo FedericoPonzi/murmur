@@ -156,16 +156,16 @@ main:has(.landing) { max-width: none; padding: 0; }
 .profile-panel output { display: block; padding: .8rem; margin-top: .6rem; background: var(--background); border-radius: .6rem; }
 .profile-panel details { border-top: 1px solid var(--border); padding-top: 1rem; font-size: .85rem; }
 .profile-panel summary { cursor: pointer; font-weight: 650; color: var(--blue); }
-.post-card { padding: 1.1rem 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
-.post-card strong, .post-card time { display: block; }
+.app-shell .post-card { padding: 1.1rem 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.app-shell .post-card strong, .app-shell .post-card time { display: block; }
 .session-layout.reader-session { grid-template-columns: minmax(0, 1fr); }
 #follow-list { list-style: none; padding: 0; }
 #follow-list li { display: flex; align-items: center; gap: .75rem; padding: .6rem 0; border-top: 1px solid var(--border); }
 #follow-list span { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: .8rem; }
 #follow-list button { width: auto; margin: 0; padding: .5rem .75rem; font-size: .8rem; }
 #feed-status { padding-left: 1.25rem; font-size: .8rem; color: var(--muted); overflow-wrap: anywhere; }
-.post-card time, #content-count, #draft-status { font-size: .8rem; color: var(--muted); }
-.post-card p { white-space: pre-wrap; margin: .65rem 0; }
+.app-shell .post-card time, #content-count, #draft-status { font-size: .8rem; color: var(--muted); }
+.app-shell .post-card p { white-space: pre-wrap; margin: .65rem 0; }
 #content-count, #draft-status { display: block; margin-top: .5rem; }
 .connection-settings { margin-top: 1.5rem; padding-bottom: 2rem; color: var(--muted); font-size: .85rem; }
 .connection-settings summary { cursor: pointer; }

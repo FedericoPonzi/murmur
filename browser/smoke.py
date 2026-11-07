@@ -7,7 +7,7 @@ import tempfile
 import threading
 import time
 from urllib.error import HTTPError
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 from urllib.request import urlopen
 
 from selenium import webdriver
@@ -65,11 +65,28 @@ def check(storage_only=False):
                 raise AssertionError(text("status"))
 
         def visit():
-            driver.get(origin)
             if os.environ.get("MURMUR_PREVIEW_URL"):
+                driver.get(urljoin(origin, "../index.html"))
+                for width in (1280, 390, 320):
+                    driver.set_window_size(width, 900)
+                    assert driver.execute_script("""
+                        const cards = [...document.querySelectorAll('.feed-preview .post-card')];
+                        return cards.length > 0 && cards.every(card => {
+                            const bounds = card.getBoundingClientRect();
+                            const labels = [...card.querySelectorAll('.post-detail span')];
+                            return labels.length === 2 && labels.every(label => {
+                                const text = label.getBoundingClientRect();
+                                return text.left - bounds.left >= 12 && bounds.right - text.right >= 12;
+                            });
+                        });
+                    """), f"Landing post details touch the card edges at {width}px."
+                    assert driver.execute_script("return document.documentElement.scrollWidth <= innerWidth")
+                driver.set_window_size(1280, 900)
                 driver.find_element(By.LINK_TEXT, "Docs").click()
                 wait.until(lambda _: driver.find_element(By.TAG_NAME, "h1").text == "Documentation")
                 driver.find_element(By.LINK_TEXT, "Open app").click()
+            else:
+                driver.get(origin)
 
         passphrase = "disposable browser identity passphrase"
         author = "Disposable <b>author</b>"
