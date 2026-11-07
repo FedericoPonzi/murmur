@@ -1,0 +1,21 @@
+[package]
+name = "murmur-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "MIT"
+publish = false
+
+[dependencies]
+murmur-model = { path = "../murmur-model" }
+serde = "1"
+serde_json = "1"
+
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
+veilid-core = { version = "=0.5.8", default-features = false, features = ["rt-tokio", "enable-crypto-vld0"] }
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+veilid-core = { version = "=0.5.8", default-features = false, features = ["default-wasm"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

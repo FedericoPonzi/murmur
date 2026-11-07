@@ -1,12 +1,12 @@
 #![cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 
-use murmur_model::{post_subkey, recent_indexes, Feed, Metadata, Post, OWNER_SUBKEYS};
+use murmur_core::{RecordIo, VeilidRecord};
+use murmur_model::{Metadata, Post, OWNER_SUBKEYS};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::sync::Arc;
 use veilid_core::{
-    api_startup, AllowOffline, DHTSchema, KeyPair, RecordKey, RoutingContext, SetDHTValueOptions,
-    TableDB, VeilidAPI, VeilidAPIError, VeilidConfig, VeilidConfigProtectedStoreBackend,
-    CRYPTO_KIND_VLD0,
+    api_startup, DHTSchema, KeyPair, RecordKey, RoutingContext, TableDB, VeilidAPI, VeilidAPIError,
+    VeilidConfig, VeilidConfigProtectedStoreBackend, CRYPTO_KIND_VLD0,
 };
 use wasm_bindgen::prelude::*;
 
@@ -31,14 +31,11 @@ fn error(message: &str) -> JsValue {
 }
 
 fn api_error(failure: VeilidAPIError) -> JsValue {
-    error(match failure {
-        VeilidAPIError::Timeout => "Veilid request timed out; retry later",
-        VeilidAPIError::TryAgain { .. } | VeilidAPIError::NoConnection { .. } => {
-            "Veilid network unavailable; retry later"
-        }
-        VeilidAPIError::KeyNotFound { .. } => "DHT record not found",
-        _ => "Veilid operation failed",
-    })
+    core_error(failure.into())
+}
+
+fn core_error(failure: murmur_core::Error) -> JsValue {
+    error(&failure.to_string())
 }
 
 fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
@@ -48,16 +45,6 @@ fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
 
 fn encode(value: &impl Serialize) -> Result<Vec<u8>> {
     serde_json::to_vec(value).map_err(|_| error("JSON serialization failed"))
-}
-
-fn validate_schema(schema: &DHTSchema) -> Result<()> {
-    match schema {
-        DHTSchema::SMPL(schema) => {
-            murmur_model::validate_schema(schema.o_cnt(), schema.members().len())
-                .map_err(|failure| error(&failure.to_string()))
-        }
-        _ => Err(error("Incompatible feed schema")),
-    }
 }
 
 #[wasm_bindgen]
@@ -150,7 +137,7 @@ impl BrowserNode {
                 .open_dht_record(identity.key.clone(), Some(identity.writer.clone()), None)
                 .await
                 .map_err(api_error)?;
-            validate_schema(descriptor.ref_schema())?;
+            murmur_core::validate_schema(descriptor.ref_schema()).map_err(core_error)?;
             if descriptor.owner() != identity.writer.key() {
                 return Err(error("Stored writer does not own the test record"));
             }
@@ -177,37 +164,18 @@ impl BrowserNode {
             .identity
             .as_ref()
             .ok_or_else(|| error("No test identity"))?;
-        if self
-            .context
-            .get_dht_value(identity.key.clone(), 0, true)
-            .await
-            .map_err(api_error)?
-            .is_none()
-        {
+        let record = VeilidRecord {
+            context: &self.context,
+            key: identity.key.clone(),
+            writer: Some(identity.writer.clone()),
+        };
+        if record.get(0).await.map_err(core_error)?.is_none() {
             let initial = Metadata {
                 author_name: "Murmur browser test".into(),
                 bio: "".into(),
                 latest_post_index: None,
             };
-            let bytes = encode(&initial)?;
-            if let Some(existing) = self
-                .context
-                .set_dht_value(
-                    identity.key.clone(),
-                    0,
-                    bytes.clone(),
-                    Some(SetDHTValueOptions {
-                        allow_offline: Some(AllowOffline(false)),
-                        ..Default::default()
-                    }),
-                )
-                .await
-                .map_err(api_error)?
-            {
-                if existing.data() != bytes {
-                    return Err(error("Conflicting test metadata"));
-                }
-            }
+            record.set(0, encode(&initial)?).await.map_err(core_error)?;
         }
         Ok(self
             .identity
@@ -217,7 +185,6 @@ impl BrowserNode {
             .to_string())
     }
 
-    // The probe persists one immutable test post, not a second publication engine.
     pub async fn publish_probe(&mut self, content: String) -> Result<String> {
         murmur_model::validate_content(&content).map_err(|failure| error(&failure.to_string()))?;
         let identity = self
@@ -246,80 +213,30 @@ impl BrowserNode {
             .post
             .as_ref()
             .ok_or_else(|| error("No test post"))?;
-        let metadata = Metadata {
-            author_name: "Murmur browser test".into(),
-            bio: "".into(),
-            latest_post_index: Some(0),
+        let record = VeilidRecord {
+            context: &self.context,
+            key: identity.key.clone(),
+            writer: Some(identity.writer.clone()),
         };
-        for (subkey, bytes) in [(1, encode(post)?), (0, encode(&metadata)?)] {
-            if let Some(existing) = self
-                .context
-                .get_dht_value(identity.key.clone(), subkey, true)
-                .await
-                .map_err(api_error)?
-            {
-                let initial_metadata = if subkey == 0 {
-                    let stored: Metadata = decode(existing.data())?;
-                    stored
-                        == Metadata {
-                            latest_post_index: None,
-                            ..metadata.clone()
-                        }
-                } else {
-                    false
-                };
-                if existing.data() != bytes && !initial_metadata {
-                    return Err(error("Conflicting test record; refusing to overwrite it"));
-                }
-            }
-            let options = SetDHTValueOptions {
-                allow_offline: Some(AllowOffline(false)),
-                ..Default::default()
-            };
-            if let Some(existing) = self
-                .context
-                .set_dht_value(identity.key.clone(), subkey, bytes.clone(), Some(options))
-                .await
-                .map_err(api_error)?
-            {
-                if existing.data() != bytes {
-                    return Err(error("Unconfirmed test publication; retry the same text"));
-                }
-            }
-        }
+        let metadata = murmur_core::read_metadata(&record)
+            .await
+            .map_err(core_error)?;
+        murmur_core::commit_post(&record, &metadata, post)
+            .await
+            .map_err(core_error)?;
         self.read_feed(identity.key.to_string()).await
     }
 
     pub async fn read_feed(&self, key: String) -> Result<String> {
         let key: RecordKey = key.parse().map_err(|_| error("Invalid Veilid RecordKey"))?;
-        let remote = if let Some(identity) = &self.identity {
-            if key.opaque() == identity.key.opaque() && key != identity.key {
-                return Err(error(
-                    "Use the complete test RecordKey, including its encryption key",
-                ));
-            }
-            key.opaque() != identity.key.opaque()
-        } else {
-            true
-        };
-        if remote {
-            let descriptor = self
-                .context
-                .open_dht_record(key.clone(), None, None)
-                .await
-                .map_err(api_error)?;
-            let result = async {
-                validate_schema(descriptor.ref_schema())?;
-                self.read_open_feed(&key).await
-            }
-            .await;
-            let closed = self.context.close_dht_record(key).await.map_err(api_error);
-            let feed = result?;
-            closed?;
-            Ok(feed)
-        } else {
-            self.read_open_feed(&key).await
-        }
+        let feed = murmur_core::read_feed(
+            &self.context,
+            self.identity.as_ref().map(|identity| &identity.key),
+            key,
+        )
+        .await
+        .map_err(core_error)?;
+        String::from_utf8(encode(&feed)?).map_err(|_| error("JSON encoding failed"))
     }
 
     pub async fn shutdown(self) {
@@ -337,39 +254,5 @@ impl BrowserNode {
             .store(0, b"identity".to_vec().into(), encode(identity)?.into())
             .await
             .map_err(api_error)
-    }
-
-    async fn read_open_feed(&self, key: &RecordKey) -> Result<String> {
-        let value = self
-            .context
-            .get_dht_value(key.clone(), 0, true)
-            .await
-            .map_err(api_error)?
-            .ok_or_else(|| error("Feed metadata is missing; publish the test post first"))?;
-        let metadata: Metadata = decode(value.data())?;
-        murmur_model::validate_profile(&metadata.author_name, &metadata.bio)
-            .map_err(|_| error("Invalid feed profile"))?;
-        let mut posts = Vec::new();
-        for index in recent_indexes(metadata.latest_post_index) {
-            let value = self
-                .context
-                .get_dht_value(key.clone(), post_subkey(index), true)
-                .await
-                .map_err(api_error)?
-                .ok_or_else(|| error("Feed is incomplete; retry later"))?;
-            let post: Post = decode(value.data())?;
-            if post.index != index {
-                return Err(error("Feed changed while reading; retry later"));
-            }
-            murmur_model::validate_content(&post.content)
-                .map_err(|_| error("Invalid feed post"))?;
-            posts.push(post);
-        }
-        String::from_utf8(encode(&Feed {
-            record_key: key.to_string(),
-            metadata,
-            posts,
-        })?)
-        .map_err(|_| error("JSON encoding failed"))
     }
 }

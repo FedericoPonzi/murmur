@@ -1612,23 +1612,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "murmur"
-version = "0.1.0"
-dependencies = [
- "axum",
- "murmur-model",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tower",
- "veilid-core",
-]
-
-[[package]]
 name = "murmur-browser"
 version = "0.1.0"
 dependencies = [
+ "murmur-core",
  "murmur-model",
  "serde",
  "serde_json",
@@ -1638,11 +1625,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "murmur-core"
+version = "0.1.0"
+dependencies = [
+ "murmur-model",
+ "serde",
+ "serde_json",
+ "tokio",
+ "veilid-core",
+]
+
+[[package]]
 name = "murmur-model"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "murmur-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "murmur-core",
+ "murmur-model",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tower",
+ "veilid-core",
 ]
 
 [[package]]

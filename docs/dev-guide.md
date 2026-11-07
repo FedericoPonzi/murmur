@@ -9,17 +9,22 @@ Browser -> HTTP GET :8080 -> shared Node/RoutingContext -> Veilid DHT
 SSH -> murmur post -> private Unix socket -> same Node -> Veilid DHT
 ```
 
-`main.rs` handles CLI arguments, process/storage locking, local IPC, and lifecycle.
-`veilid.rs` handles identity, attachment, DHT I/O, and recovery.
-`web.rs` serves GET handlers and embeds `index.html` with `include_str!`.
-The workspace's `murmur-model` crate owns public feed types, validation,
-ring indexing, and owner-only schema counts. It depends only on Serde, not on
-Veilid, Tokio, Axum, or native storage; transport-specific errors stay native.
+The workspace keeps platform storage and lifecycle separate from feed operations:
+
+| Crate | Responsibility |
+| --- | --- |
+| `murmur-model` | Public types, validation, ring indexes, and schema counts; Serde only |
+| `murmur-core` | Native/WASM DHT reads, confirmed writes, recovery, ownership checks, and deadlines |
+| `murmur-server` | CLI, native node, private files/IPC, and read-only Axum bridge |
+| `murmur-browser` | WASM bindings, worker node, and browser-local test identity |
+
+The server's `web.rs` embeds `crates/murmur-server/index.html`.
+Root `cargo run` and `cargo build --release` still select the `murmur` binary.
 The frontend uses plain JavaScript and renders untrusted text with `textContent`.
 Small `RecordIo`/`FeedSource` seams allow behavior tests without Internet access;
 there is no external Veilid daemon, database server, or JavaScript framework.
-The separate [browser probe](browser-probe.md) tests a worker-hosted WASM node
-without changing the native application or exposing its writer over HTTP.
+The [browser probe](browser-probe.md) uses the same feed operations without
+exposing its writer over HTTP.
 
 ## Build and checks
 

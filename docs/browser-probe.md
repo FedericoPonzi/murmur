@@ -41,9 +41,7 @@ adb reverse tcp:8000 tcp:8000
 ```
 
 Open `http://localhost:8000` in phone Chrome. This uses the laptop's HTTP server
-without public hosting, certificates, or bypassing browser protections. Phone
-compatibility still needs physical-device verification; Android emulator
-results are recorded below. iOS is unverified.
+without public hosting, certificates, or bypassing browser protections.
 HTTPS/WSS connectivity is a separate, deferred deployment test.
 
 ## Storage and limits
@@ -75,16 +73,3 @@ For full cross-reads, run the native server with disposable storage, publish
 a test post through its CLI, and set `MURMUR_BRIDGE_URL` to that server before
 running `node browser/smoke.cjs`. Each run preserves its log/screenshot in a
 separate temporary artifacts directory; test browser credentials are discarded.
-
-Current evidence: automated Chromium on Linux starts the real WASM worker,
-preserves IndexedDB on reload, rejects a second same-origin tab, publishes the
-test post, reads a native feed, and confirms the browser post from the native
-bridge.
-An Android 14 emulator running Chrome 113.0.5672.136 also passed worker startup,
-IndexedDB persistence, network attachment, both directions of native/browser
-cross-read, one confirmed post, literal markup rendering, and stable key/feed
-after reload, using ADB-forwarded localhost HTTP. One attempt returned a
-network-unavailable error; a subsequent full run passed. This is emulator
-evidence, not a guarantee of availability or physical-device/iOS support.
-The locked release produces about 15.7 MiB of WASM (3.8 MiB gzip) plus 327 KiB
-of JavaScript bindings, before any later size optimization.

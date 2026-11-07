@@ -1,7 +1,7 @@
-use murmur_model::{
-    next_index, post_subkey, recent_indexes, validate_profile, Feed, Metadata, ModelError, Post,
-    OWNER_SUBKEYS,
+use murmur_core::{
+    commit_post, decode, encode, read_metadata, validate_schema, RecordIo, VeilidRecord,
 };
+use murmur_model::{next_index, validate_profile, Feed, Metadata, ModelError, Post, OWNER_SUBKEYS};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File, OpenOptions},
@@ -17,8 +17,8 @@ use tokio::{
     task::JoinHandle,
 };
 use veilid_core::{
-    api_startup, AllowOffline, DHTSchema, KeyPair, RecordKey, RoutingContext, SetDHTValueOptions,
-    VeilidAPI, VeilidAPIError, VeilidConfig, VeilidUpdate, CRYPTO_KIND_VLD0,
+    api_startup, DHTSchema, KeyPair, RecordKey, RoutingContext, VeilidAPI, VeilidAPIError,
+    VeilidConfig, VeilidUpdate, CRYPTO_KIND_VLD0,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -87,17 +87,29 @@ impl From<std::io::Error> for Error {
 
 impl From<VeilidAPIError> for Error {
     fn from(error: VeilidAPIError) -> Self {
-        let (status, message) = match error {
-            VeilidAPIError::Timeout => (504, "Veilid request timed out"),
-            VeilidAPIError::TryAgain { .. } | VeilidAPIError::NoConnection { .. } => {
-                (503, "Veilid network unavailable; retry later")
+        murmur_core::Error::from(error).into()
+    }
+}
+
+impl From<murmur_core::Error> for Error {
+    fn from(error: murmur_core::Error) -> Self {
+        use murmur_core::Error as CoreError;
+        let status = match error {
+            CoreError::Model(error) => return error.into(),
+            CoreError::NetworkTimeout | CoreError::Deadline => 504,
+            CoreError::Unavailable => 503,
+            CoreError::NotFound => 404,
+            CoreError::Serialization => 500,
+            CoreError::WriteConflict => 409,
+            CoreError::IncompleteOwnerKey => {
+                return Self::new(
+                    400,
+                    "use the complete server RecordKey, including its encryption key",
+                )
             }
-            VeilidAPIError::KeyNotFound { .. } => (404, "DHT record not found"),
-            _ => (502, "Veilid operation failed"),
+            _ => 502,
         };
-        // Avoid logging API arguments, which may contain writer credentials.
-        veilid_core::tracing::warn!(status, message);
-        Self::new(status, message)
+        Self::new(status, error.to_string())
     }
 }
 
@@ -146,11 +158,6 @@ pub fn save_json(path: &Path, value: &impl Serialize) -> Result<()> {
     Ok(())
 }
 
-trait RecordIo {
-    fn get(&self, subkey: u32) -> impl Future<Output = Result<Option<Vec<u8>>>> + Send;
-    fn set(&self, subkey: u32, data: Vec<u8>) -> impl Future<Output = Result<()>> + Send;
-}
-
 fn validate_config(config: &Config) -> Result<()> {
     validate_profile(&config.author_name, &config.bio)?;
     match (&config.record_key, &config.writer) {
@@ -165,29 +172,6 @@ fn validate_config(config: &Config) -> Result<()> {
             "invalid or incomplete local identity; refusing to replace it",
         )),
     }
-}
-
-fn validate_schema(schema: &DHTSchema) -> Result<()> {
-    match schema {
-        DHTSchema::SMPL(schema) => {
-            murmur_model::validate_schema(schema.o_cnt(), schema.members().len())
-                .map_err(Into::into)
-        }
-        _ => Err(ModelError::InvalidSchema.into()),
-    }
-}
-
-fn remote_key(own: &RecordKey, requested: &RecordKey) -> Result<bool> {
-    if own.opaque() != requested.opaque() {
-        return Ok(true);
-    }
-    if own != requested {
-        return Err(Error::new(
-            400,
-            "use the complete server RecordKey, including its encryption key",
-        ));
-    }
-    Ok(false)
 }
 
 async fn tracked<T: Send + 'static>(
@@ -207,124 +191,8 @@ async fn tracked<T: Send + 'static>(
         .map_err(|_| Error::new(500, "feed worker failed"))?
 }
 
-fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T> {
-    serde_json::from_slice(bytes).map_err(|_| "invalid feed JSON".into())
-}
-
-fn encode(value: &impl Serialize) -> Result<Vec<u8>> {
-    serde_json::to_vec(value).map_err(|_| Error::new(500, "JSON serialization failed"))
-}
-
-async fn read_metadata(record: &impl RecordIo) -> Result<Metadata> {
-    let bytes = record.get(0).await?.ok_or("feed metadata is missing")?;
-    let metadata: Metadata = decode(&bytes)?;
-    validate_profile(&metadata.author_name, &metadata.bio)
-        .map_err(|_| Error::new(502, "invalid feed profile"))?;
-    Ok(metadata)
-}
-
-async fn read_posts(record: &impl RecordIo, metadata: &Metadata) -> Result<Vec<Post>> {
-    let mut posts = Vec::new();
-    for index in recent_indexes(metadata.latest_post_index) {
-        let bytes = record
-            .get(post_subkey(index))
-            .await?
-            .ok_or("feed is incomplete; retry later")?;
-        let post: Post = decode(&bytes)?;
-        if post.index != index {
-            return Err("feed changed while reading; retry later".into());
-        }
-        validate_content(&post.content).map_err(|_| Error::new(502, "invalid feed post"))?;
-        posts.push(post);
-    }
-    Ok(posts)
-}
-
-async fn commit_post(record: &impl RecordIo, metadata: &Metadata, post: &Post) -> Result<()> {
-    if metadata.latest_post_index != Some(post.index)
-        && next_index(metadata.latest_post_index)? != post.index
-    {
-        return Err("pending post is out of sequence; manual recovery required".into());
-    }
-    let slot = post_subkey(post.index);
-    let existing = record
-        .get(slot)
-        .await?
-        .map(|bytes| decode::<Post>(&bytes))
-        .transpose()?;
-    if let Some(existing) = &existing {
-        if existing.index >= post.index && existing != post {
-            return Err("conflicting post; manual recovery required".into());
-        }
-    }
-    if metadata.latest_post_index == Some(post.index) {
-        return if existing.as_ref() == Some(post) {
-            Ok(())
-        } else {
-            Err("published metadata has no matching post; manual recovery required".into())
-        };
-    }
-    if existing.as_ref() != Some(post) {
-        record.set(slot, encode(post)?).await?;
-    }
-    let mut updated = metadata.clone();
-    updated.latest_post_index = Some(post.index);
-    record.set(0, encode(&updated)?).await
-}
-
 pub fn validate_content(content: &str) -> Result<()> {
     murmur_model::validate_content(content).map_err(Into::into)
-}
-
-struct VeilidRecord<'a> {
-    context: &'a RoutingContext,
-    key: RecordKey,
-    writer: Option<KeyPair>,
-}
-
-impl RecordIo for VeilidRecord<'_> {
-    async fn get(&self, subkey: u32) -> Result<Option<Vec<u8>>> {
-        deadline(
-            async {
-                self.context
-                    .get_dht_value(self.key.clone(), subkey, true)
-                    .await
-                    .map(|value| value.map(|value| value.data().to_vec()))
-                    .map_err(Into::into)
-            },
-            30,
-        )
-        .await
-    }
-
-    async fn set(&self, subkey: u32, data: Vec<u8>) -> Result<()> {
-        deadline(
-            async {
-                let result = self
-                    .context
-                    .set_dht_value(
-                        self.key.clone(),
-                        subkey,
-                        data.clone(),
-                        Some(SetDHTValueOptions {
-                            writer: self.writer.clone(),
-                            allow_offline: Some(AllowOffline(false)),
-                            ..Default::default()
-                        }),
-                    )
-                    .await?;
-                if result.is_some_and(|value| value.data() != data.as_slice()) {
-                    return Err(Error::new(
-                        409,
-                        "DHT write conflict; publication not confirmed",
-                    ));
-                }
-                Ok(())
-            },
-            30,
-        )
-        .await
-    }
 }
 
 pub struct Node {
@@ -527,59 +395,9 @@ impl Node {
             .map_err(|_| Error::new(503, "too many feed requests; retry later"))?;
         let _operation = deadline(async { Ok(self.operations.lock().await) }, 30).await?;
         self.check_ready()?;
-        let remote = remote_key(&self.key(), &key)?;
-        if remote {
-            let opened = deadline(
-                async {
-                    self.context
-                        .open_dht_record(key.clone(), None, None)
-                        .await
-                        .map_err(Into::into)
-                },
-                30,
-            )
-            .await;
-            let descriptor = match opened {
-                Ok(descriptor) => descriptor,
-                Err(error) => {
-                    self.close_remote(key.clone()).await?;
-                    return Err(error);
-                }
-            };
-            if let Err(error) = validate_schema(descriptor.ref_schema()) {
-                self.close_remote(key).await?;
-                return Err(error);
-            }
-        }
-        let record = VeilidRecord {
-            context: &self.context,
-            key: key.clone(),
-            writer: None,
-        };
-        let result = deadline(
-            async {
-                let metadata = read_metadata(&record).await?;
-                let posts = read_posts(&record, &metadata).await?;
-                Ok(Feed {
-                    record_key: key.to_string(),
-                    metadata,
-                    posts,
-                })
-            },
-            60,
-        )
-        .await;
-        if remote {
-            self.close_remote(key).await?;
-        }
-        result
-    }
-
-    async fn close_remote(&self, key: RecordKey) -> Result<()> {
-        match self.context.close_dht_record(key).await {
-            Ok(()) | Err(VeilidAPIError::KeyNotFound { .. }) => Ok(()),
-            Err(error) => Err(error.into()),
-        }
+        murmur_core::read_feed(&self.context, Some(&self.key()), key)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn shutdown(&self) {
@@ -601,46 +419,6 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{collections::BTreeMap, sync::Mutex};
-
-    struct FakeRecord {
-        values: Mutex<BTreeMap<u32, Vec<u8>>>,
-        writes: Mutex<Vec<u32>>,
-        fail_metadata: Mutex<bool>,
-    }
-
-    impl FakeRecord {
-        fn new(metadata: &Metadata) -> Self {
-            Self {
-                values: Mutex::new(BTreeMap::from([(0, serde_json::to_vec(metadata).unwrap())])),
-                writes: Mutex::new(vec![]),
-                fail_metadata: Mutex::new(false),
-            }
-        }
-    }
-
-    impl RecordIo for FakeRecord {
-        async fn get(&self, subkey: u32) -> Result<Option<Vec<u8>>> {
-            Ok(self.values.lock().unwrap().get(&subkey).cloned())
-        }
-
-        async fn set(&self, subkey: u32, data: Vec<u8>) -> Result<()> {
-            self.writes.lock().unwrap().push(subkey);
-            if subkey == 0 && *self.fail_metadata.lock().unwrap() {
-                return Err("metadata write failed".into());
-            }
-            self.values.lock().unwrap().insert(subkey, data);
-            Ok(())
-        }
-    }
-
-    fn metadata(latest: Option<u64>) -> Metadata {
-        Metadata {
-            author_name: "Test author".into(),
-            bio: String::new(),
-            latest_post_index: latest,
-        }
-    }
 
     fn post(index: u64) -> Post {
         Post {
@@ -651,7 +429,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_incomplete_identity_and_incompatible_schema() {
+    fn rejects_incomplete_identity() {
         let mut config = Config {
             author_name: "Test".into(),
             bio: String::new(),
@@ -673,96 +451,6 @@ mod tests {
                 .unwrap(),
         );
         assert!(validate_config(&config).is_err());
-        assert!(validate_schema(&DHTSchema::smpl(101, vec![]).unwrap()).is_ok());
-        assert!(validate_schema(&DHTSchema::dflt(101).unwrap()).is_err());
-        assert!(validate_schema(&DHTSchema::smpl(2, vec![]).unwrap()).is_err());
-    }
-
-    #[tokio::test]
-    async fn publishes_post_before_metadata_and_recovers_same_post() {
-        let initial = metadata(None);
-        let record = FakeRecord::new(&initial);
-        *record.fail_metadata.lock().unwrap() = true;
-        assert!(commit_post(&record, &initial, &post(0)).await.is_err());
-        let stored: Metadata =
-            serde_json::from_slice(&record.get(0).await.unwrap().unwrap()).unwrap();
-        assert_eq!(stored.latest_post_index, None);
-        assert_eq!(*record.writes.lock().unwrap(), vec![1, 0]);
-        *record.fail_metadata.lock().unwrap() = false;
-        commit_post(&record, &stored, &post(0)).await.unwrap();
-        let stored: Metadata =
-            serde_json::from_slice(&record.get(0).await.unwrap().unwrap()).unwrap();
-        assert_eq!(stored.latest_post_index, Some(0));
-        let writes = record.writes.lock().unwrap().clone();
-        commit_post(&record, &stored, &post(0)).await.unwrap();
-        assert_eq!(*record.writes.lock().unwrap(), writes);
-    }
-
-    #[tokio::test]
-    async fn refuses_conflicting_or_out_of_sequence_pending_post() {
-        let initial = metadata(Some(99));
-        let record = FakeRecord::new(&initial);
-        record
-            .set(1, serde_json::to_vec(&post(0)).unwrap())
-            .await
-            .unwrap();
-        commit_post(&record, &initial, &post(100)).await.unwrap();
-        assert!(read_posts(&record, &metadata(Some(100))).await.is_err());
-        assert!(commit_post(&record, &metadata(Some(100)), &post(102))
-            .await
-            .is_err());
-        let mut conflicting = post(100);
-        conflicting.content = "different".into();
-        assert!(commit_post(&record, &metadata(Some(100)), &conflicting)
-            .await
-            .is_err());
-    }
-
-    #[tokio::test]
-    async fn reads_newest_posts_and_rejects_missing_corrupt_or_wrapped_slots() {
-        let record = FakeRecord::new(&metadata(Some(105)));
-        for index in 6..=105 {
-            record
-                .set(
-                    post_subkey(index),
-                    serde_json::to_vec(&post(index)).unwrap(),
-                )
-                .await
-                .unwrap();
-        }
-        let posts = read_posts(&record, &metadata(Some(105))).await.unwrap();
-        assert_eq!(posts.first().unwrap().index, 105);
-        assert_eq!(posts.last().unwrap().index, 86);
-        record
-            .set(post_subkey(105), serde_json::to_vec(&post(5)).unwrap())
-            .await
-            .unwrap();
-        assert!(read_posts(&record, &metadata(Some(105))).await.is_err());
-        record
-            .set(post_subkey(105), b"not json".to_vec())
-            .await
-            .unwrap();
-        assert!(read_posts(&record, &metadata(Some(105))).await.is_err());
-        record.values.lock().unwrap().remove(&post_subkey(105));
-        assert!(read_posts(&record, &metadata(Some(105))).await.is_err());
-        assert!(read_posts(&record, &metadata(None))
-            .await
-            .unwrap()
-            .is_empty());
-    }
-
-    #[tokio::test]
-    async fn completed_final_index_can_be_recovered_without_incrementing() {
-        let latest = metadata(Some(u64::MAX));
-        let record = FakeRecord::new(&latest);
-        record
-            .set(post_subkey(u64::MAX), encode(&post(u64::MAX)).unwrap())
-            .await
-            .unwrap();
-        commit_post(&record, &latest, &post(u64::MAX))
-            .await
-            .unwrap();
-        assert!(next_index(Some(u64::MAX)).is_err());
     }
 
     #[test]
@@ -785,23 +473,6 @@ mod tests {
     async fn deadlines_report_failure_instead_of_waiting_forever() {
         let result = deadline(async { std::future::pending::<Result<()>>().await }, 0).await;
         assert_eq!(result.unwrap_err().status, 504);
-    }
-
-    #[test]
-    fn rejects_owner_key_alias_without_reopening_owner() {
-        let bare: RecordKey = "VLD0:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-            .parse()
-            .unwrap();
-        let secret = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-            .parse()
-            .unwrap();
-        let own = RecordKey::from_opaque(bare.opaque(), Some(secret));
-        assert!(!remote_key(&own, &own).unwrap());
-        assert!(remote_key(&own, &bare).is_err());
-        let other: RecordKey = "VLD0:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"
-            .parse()
-            .unwrap();
-        assert!(remote_key(&own, &other).unwrap());
     }
 
     #[tokio::test]
