@@ -169,6 +169,17 @@ try {
   element('share-feed').click();
   await wait(() => frame.contentWindow.copiedText);
   assert(new URL(frame.contentWindow.copiedText).searchParams.get('feed') === 'VLD0:remote', 'Copied link points to a different feed.');
+  element('export-reading').click();
+  await wait(() => frame.contentWindow.downloadName === 'murmur-reading-list.json');
+  const reading = await frame.contentWindow.downloadedBlob.text();
+  assert(JSON.parse(reading).follows.includes('VLD0:remote'), 'Reading list download lost follows.');
+  assert(!reading.includes('guest-readable'), 'Reading list download included cached posts.');
+  const readingFiles = new DataTransfer();
+  readingFiles.items.add(new File([JSON.stringify({ ...JSON.parse(reading), follows: ['VLD0:imported'], seen: {} })], 'reading.json'));
+  element('reading-file').files = readingFiles.files;
+  element('reading-form').requestSubmit();
+  await wait(() => element('follow-list').textContent.includes('VLD0:imported'));
+  assert(element('follow-list').textContent.includes('VLD0:remote'), 'Import replaced the existing list.');
   Array.from(element('follow-list').querySelectorAll('li')).find(item => item.textContent.includes('VLD0:remote'))
     .querySelector('button:last-child').click();
   await wait(() => !element('follow-list').textContent.includes('VLD0:remote'));

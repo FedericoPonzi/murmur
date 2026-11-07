@@ -161,6 +161,16 @@
 <p id="follow-status" role="status"></p>
 <ul id="follow-list"></ul>
 <button id="reset-follows" class="quiet-button" hidden>Reset saved follows</button>
+<details>
+<summary>Back up your reading list</summary>
+<p class="preview-notice">This unencrypted JSON file contains followed keys and read markers, not your identity, drafts or cached posts. Import merges without removing existing follows.</p>
+<button id="export-reading" class="quiet-button" disabled>Export reading list</button>
+<form id="reading-form">
+<label for="reading-file">Import a reading list</label>
+<input id="reading-file" type="file" accept=".json,application/json" required>
+<button id="import-reading" class="quiet-button" disabled>Merge reading list</button>
+</form>
+</details>
 </section>
 <section aria-labelledby="timeline-heading">
 <h2 id="timeline-heading">Your timeline</h2>

@@ -50,6 +50,11 @@ posts as read** saves your place; later logical post indices appear unread.
 Read markers, follows, and public cache stay on this browser and are not
 included in encrypted identity backups. Older remote snapshots do not replace
 newer cached reads.
+Use **Back up your reading list** to export followed keys and read markers as
+unencrypted JSON. Keep this file private if your follows are sensitive.
+**Merge reading list** validates the keys and adds them without removing current
+follows or cached posts; the 50-feed limit still applies. This file contains no
+author credentials, drafts or cached posts and cannot replace an identity backup.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.

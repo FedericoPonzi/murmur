@@ -1,4 +1,5 @@
-import { loadFollows, addFollow, removeFollow, resetFollows, saveFeed, cachedFeeds, timeline, markRead, feedLink, sharedFeed } from './feeds.mjs';
+import { loadFollows, addFollow, removeFollow, resetFollows, saveFeed, cachedFeeds, timeline, markRead, feedLink, sharedFeed,
+  exportReadingList, decodeReadingList, importReadingList, READING_LIST_LIMIT } from './feeds.mjs';
 
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
@@ -8,6 +9,16 @@ let refreshTask;
 let pendingFeed, unreadCount = 0;
 const feedProgress = new Map();
 const requests = new Map();
+const downloadFile = (name, text) => {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+};
 const clearPassphrases = () => {
   for (const id of ['passphrase', 'confirm-passphrase', 'unlock-passphrase', 'restore-passphrase',
     'restore-local-passphrase', 'restore-confirm', 'backup-passphrase', 'backup-confirm', 'verify-passphrase']) $(id).value = '';
@@ -55,6 +66,7 @@ const showFeed = result => {
 };
 const controls = () => {
   $('follow').disabled = !active || busy;
+  $('export-reading').disabled = $('import-reading').disabled = !active || busy;
   $('share-feed').disabled = !active || busy;
   $('share-own').disabled = !active || guest || busy;
   $('mark-read').disabled = !active || busy || !unreadCount;
@@ -182,6 +194,35 @@ const copyFeedLink = async key => {
 };
 $('share-feed').onclick = () => copyFeedLink($('key').value);
 $('share-own').onclick = () => copyFeedLink($('own-key').textContent);
+$('export-reading').onclick = () => {
+  try {
+    downloadFile('murmur-reading-list.json', exportReadingList(localStorage));
+    $('follow-status').textContent = 'Reading list prepared. This file is not encrypted and cannot recover your author identity.';
+  } catch (failure) { $('follow-status').textContent = `Reading list export failed: ${failure.message}`; }
+};
+$('reading-form').onsubmit = async event => {
+  event.preventDefault();
+  if (!active || busy) return;
+  const run = generation;
+  busy = true;
+  controls();
+  try {
+    const file = $('reading-file').files[0];
+    if (!file) throw new Error('Select a reading list file.');
+    if (file.size > READING_LIST_LIMIT) throw new Error('Reading list file is too large.');
+    const text = await file.text(), incoming = decodeReadingList(text);
+    for (const key of incoming.follows) {
+      if (run !== generation) return;
+      if (await call('check_key', key) !== key) throw new Error('Reading list contains a noncanonical feed key.');
+    }
+    if (run !== generation) return;
+    renderFollows(importReadingList(localStorage, text));
+    $('follow-status').textContent = 'Reading list merged. Existing follows and cached reads were kept.';
+    $('reading-file').value = '';
+  } catch (failure) {
+    if (run === generation) $('follow-status').textContent = `Reading list import failed: ${failure.message}`;
+  } finally { if (run === generation) { busy = false; controls(); } }
+};
 $('follow').onclick = async () => {
   if (!active || busy) return;
   const run = generation;
@@ -565,14 +606,7 @@ $('backup-form').onsubmit = async event => {
     clearPassphrases();
     const envelope = await pending;
     if (run !== generation) return;
-    const url = URL.createObjectURL(new Blob([envelope], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'murmur-identity.murmur';
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    downloadFile('murmur-identity.murmur', envelope);
     $('status').textContent = 'Backup prepared. Save the file, then verify the saved copy below.';
   } catch (failure) {
     if (run === generation) $('status').textContent = `Backup failed: ${failure.message}`;

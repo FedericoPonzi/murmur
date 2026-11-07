@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'murmur-follows-v1';
 export const FOLLOW_LIMIT = 50;
+export const READING_LIST_LIMIT = 128 * 1024;
 const MAX_SAVED = 2 * 1024 * 1024;
 const integer = value => Number.isSafeInteger(value) && value >= 0;
 const fields = (value, names) => value && typeof value === 'object' && !Array.isArray(value)
@@ -116,4 +117,27 @@ export function sharedFeed(address) {
   if (!keys.length) return null;
   if (keys.length !== 1 || !keys[0].trim() || keys[0].length > 512) throw new Error('Use exactly one complete feed key.');
   return keys[0];
+}
+export function exportReadingList(storage) {
+  const state = load(storage);
+  return JSON.stringify({ format: 'murmur-reading-list', version: 1, follows: state.follows, seen: state.seen ?? {} }, null, 2);
+}
+export function decodeReadingList(text) {
+  if (typeof text !== 'string' || text.length > READING_LIST_LIMIT) throw new Error('Reading list file is too large.');
+  let value;
+  try { value = JSON.parse(text); }
+  catch { throw new Error('Reading list file is not valid JSON.'); }
+  if (!fields(value, ['format', 'version', 'follows', 'seen']) || value.format !== 'murmur-reading-list') {
+    throw new Error('This is not a Murmur reading list. Identity backups use a different format.');
+  }
+  return validate({ version: value.version, follows: value.follows, seen: value.seen });
+}
+export function importReadingList(storage, text) {
+  const incoming = decodeReadingList(text), state = load(storage);
+  state.follows = [...new Set([...state.follows, ...incoming.follows])];
+  state.seen = { ...state.seen };
+  for (const [key, index] of Object.entries(incoming.seen)) {
+    state.seen[key] = Math.max(state.seen[key] ?? 0, index);
+  }
+  return save(storage, state);
 }

@@ -71,6 +71,25 @@ try {
   assert(new URL(link).pathname === '/base/app/index.html', 'Feed link lost the hosted base path.');
   rejects(() => sharedFeed('http://localhost/?feed=one&feed=two'));
   rejects(() => sharedFeed('http://localhost/?feed='));
+  const { exportReadingList, decodeReadingList, importReadingList } = await import('./feeds.mjs');
+  const reading = exportReadingList(storage);
+  assert(!reading.includes('Post ') && !reading.includes('metadata'), 'Reading export included cached content.');
+  const importedValues = new Map();
+  const destination = { getItem: key => importedValues.get(key) ?? null,
+    setItem: (key, value) => importedValues.set(key, value) };
+  addFollow(destination, 'VLD0:existing');
+  importReadingList(destination, reading);
+  importReadingList(destination, reading);
+  assert(loadFollows(destination).join(',') === 'VLD0:existing,VLD0:second', 'Reading import replaced or duplicated follows.');
+  saveFeed(destination, 'VLD0:second', feed('VLD0:second', [20, 30]), 106);
+  assert(timeline(destination).filter(entry => entry.unread).length === 1, 'Import lost the read marker.');
+  const original = JSON.stringify([...importedValues]);
+  rejects(() => importReadingList(destination, '{"header":{},"ciphertext":[]}'));
+  rejects(() => decodeReadingList('x'.repeat(128 * 1024 + 1)));
+  rejects(() => importReadingList(destination, JSON.stringify({ ...JSON.parse(reading), cache: {} })));
+  assert(JSON.stringify([...importedValues]) === original, 'Invalid import changed the reading list.');
+  for (let index = 0; index < 48; index++) addFollow(destination, `VLD0:extra-${index}`);
+  rejects(() => importReadingList(destination, JSON.stringify({ ...JSON.parse(reading), follows: ['VLD0:overflow'], seen: {} })));
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.message}`;
