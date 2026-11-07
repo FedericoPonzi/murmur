@@ -63,3 +63,12 @@ jobs:
         run: cargo clippy -p murmur-browser --target wasm32-unknown-unknown --release --locked -- -D warnings
       - name: Build WASM
         run: cargo build -p murmur-browser --target wasm32-unknown-unknown --release --locked
+      - name: Install WASM bindings tool
+        run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - name: Check credential format in browser
+        run: |
+          cargo build -p murmur-browser --target wasm32-unknown-unknown --release --locked --features vault-tests
+          mkdir -p "$RUNNER_TEMP/murmur-vault-tests"
+          wasm-bindgen --target web --out-dir "$RUNNER_TEMP/murmur-vault-tests/pkg" target/wasm32-unknown-unknown/release/murmur_browser.wasm
+          cp browser/vault-tests.html "$RUNNER_TEMP/murmur-vault-tests/"
+          python3 browser/check.py --root "$RUNNER_TEMP/murmur-vault-tests" --page vault-tests.html

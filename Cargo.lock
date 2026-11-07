@@ -68,6 +68,7 @@ dependencies = [
  "blake2",
  "cpufeatures 0.3.1",
  "password-hash",
+ "zeroize",
 ]
 
 [[package]]
@@ -1628,11 +1629,15 @@ dependencies = [
 name = "murmur-core"
 version = "0.1.0"
 dependencies = [
+ "argon2",
+ "chacha20poly1305",
+ "getrandom 0.4.3",
  "murmur-model",
  "serde",
  "serde_json",
  "tokio",
  "veilid-core",
+ "zeroize",
 ]
 
 [[package]]

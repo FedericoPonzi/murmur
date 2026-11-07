@@ -9,6 +9,9 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+vault-tests = []
+
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 murmur-core = { path = "../murmur-core" }
 murmur-model = { path = "../murmur-model" }

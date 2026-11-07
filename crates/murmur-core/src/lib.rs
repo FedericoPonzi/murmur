@@ -1,3 +1,5 @@
+pub mod vault;
+
 use murmur_model::{
     next_index, post_subkey, recent_indexes, validate_content, validate_profile, Feed, Metadata,
     ModelError, Post,

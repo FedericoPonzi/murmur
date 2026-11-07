@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Murmur credential format checks</title>
+<output id="result">running</output>
+<script type="module">
+import init, { check_vault_format } from './pkg/murmur_browser.js';
+try {
+  await init();
+  check_vault_format();
+  document.getElementById('result').textContent = 'passed';
+} catch (failure) {
+  document.getElementById('result').textContent = `failed: ${failure}`;
+}
+</script>
+</html>

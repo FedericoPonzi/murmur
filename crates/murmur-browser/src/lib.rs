@@ -12,6 +12,36 @@ use wasm_bindgen::prelude::*;
 
 type Result<T> = std::result::Result<T, JsValue>;
 
+#[cfg(feature = "vault-tests")]
+#[wasm_bindgen]
+pub fn check_vault_format() -> Result<()> {
+    use murmur_core::vault;
+    let credentials = br#"{"writer":"disposable-test-secret","pending_post":null}"#;
+    let passphrase = "disposable passphrase \u{e9}";
+    let failure = |failure: vault::Error| error(&failure.to_string());
+    let fixture = include_bytes!("../../murmur-core/tests/vault-v1.json");
+    if vault::open(fixture, passphrase)
+        .map_err(failure)?
+        .as_slice()
+        != credentials
+    {
+        return Err(error("Native/WASM credential format mismatch"));
+    }
+    let encoded = vault::seal(credentials, passphrase).map_err(failure)?;
+    if vault::open(&encoded, passphrase)
+        .map_err(failure)?
+        .as_slice()
+        != credentials
+        || !matches!(
+            vault::open(&encoded, "different passphrase"),
+            Err(vault::Error::Authentication)
+        )
+    {
+        return Err(error("WASM credential encryption check failed"));
+    }
+    Ok(())
+}
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = Date, js_name = now)]
