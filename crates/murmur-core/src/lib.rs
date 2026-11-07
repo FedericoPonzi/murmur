@@ -140,6 +140,19 @@ pub async fn read_posts(record: &impl RecordIo, metadata: &Metadata) -> Result<V
     Ok(posts)
 }
 
+pub async fn update_profile(
+    record: &impl RecordIo,
+    author_name: String,
+    bio: String,
+) -> Result<Metadata> {
+    validate_profile(&author_name, &bio)?;
+    let mut metadata = read_metadata(record).await?;
+    metadata.author_name = author_name;
+    metadata.bio = bio;
+    record.set(0, encode(&metadata)?).await?;
+    Ok(metadata)
+}
+
 pub async fn commit_post(record: &impl RecordIo, metadata: &Metadata, post: &Post) -> Result<()> {
     validate_content(&post.content)?;
     if metadata.latest_post_index != Some(post.index)
@@ -341,6 +354,26 @@ mod tests {
             timestamp: 42,
             content: format!("post {index}"),
         }
+    }
+
+    #[tokio::test]
+    async fn profile_changes_preserve_feed_position_and_surface_write_failure() {
+        let record = FakeRecord::new(&metadata(Some(105)));
+        let updated = update_profile(&record, "New author".into(), "New bio".into())
+            .await
+            .unwrap();
+        assert_eq!(updated.latest_post_index, Some(105));
+        assert_eq!(read_metadata(&record).await.unwrap(), updated);
+        assert_eq!(*record.writes.lock().unwrap(), vec![0]);
+        assert!(update_profile(&record, " ".into(), "".into())
+            .await
+            .is_err());
+        assert_eq!(*record.writes.lock().unwrap(), vec![0]);
+        *record.fail_metadata.lock().unwrap() = true;
+        assert!(update_profile(&record, "Other author".into(), "".into())
+            .await
+            .is_err());
+        assert_eq!(read_metadata(&record).await.unwrap(), updated);
     }
 
     #[tokio::test]

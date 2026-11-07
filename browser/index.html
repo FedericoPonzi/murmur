@@ -88,6 +88,19 @@
 <p id="profile-bio"></p>
 <label for="own-key">Your public RecordKey</label>
 <output id="own-key"></output>
+<button id="copy-key" class="quiet-button" disabled>Copy RecordKey</button>
+<details id="profile-settings">
+<summary>Edit public profile</summary>
+<form id="profile-form">
+<fieldset id="profile-fields" disabled>
+<label for="edit-name">Display name</label>
+<input id="edit-name" required>
+<label for="edit-bio">Bio</label>
+<textarea id="edit-bio"></textarea>
+<button id="save-profile" type="submit" disabled>Save profile</button>
+</fieldset>
+</form>
+</details>
 <p class="preview-notice">Share this key so others can read your feed.</p>
 <button id="stop" class="quiet-button" disabled>Lock identity</button>
 <p class="preview-notice">Locking or closing this tab stops its node. Reloading starts locked.</p>
@@ -119,13 +132,19 @@
 <h2>Share a thought</h2>
 <p class="preview-notice">Posts and profile information are public. Your feed shows the newest 20 posts from 100 retained network slots.</p>
 <label for="content">What's on your mind?</label>
-<textarea id="content" aria-describedby="content-help"></textarea>
+<textarea id="content" maxlength="8000" aria-describedby="content-help content-count draft-status"></textarea>
 <small id="content-help">Up to 280 characters. An interrupted attempt keeps the same text for retry.</small>
+<output id="content-count" aria-live="polite">0 / 280</output>
+<small id="draft-status" role="status"></small>
 <button id="publish" disabled>Publish post</button>
 <label for="key">Read a feed by RecordKey</label>
 <input id="key" spellcheck="false">
 <button id="read" disabled>Read feed</button>
-<pre id="feed" aria-label="Feed response"></pre>
+<section id="feed-cards" aria-label="Read feed"></section>
+<details><summary>Response details</summary><pre id="feed" aria-label="Feed response"></pre></details>
+<h2>Your saved posts</h2>
+<p class="preview-notice">Up to 1000 locally confirmed posts. This is not a permanent network archive.</p>
+<section id="authored-history" aria-label="Local authored history"></section>
 </div>
 </section>
 <p id="status" role="status">Checking local identity...</p>

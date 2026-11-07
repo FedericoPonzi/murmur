@@ -1,17 +1,61 @@
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
 let active = false, attached = false, busy = false, authenticating = true, mode = 'create';
+let publicIdentity, draftTimer, draftVersion = 0;
 const requests = new Map();
 const clearPassphrases = () => {
   for (const id of ['passphrase', 'confirm-passphrase', 'unlock-passphrase', 'restore-passphrase',
     'restore-local-passphrase', 'restore-confirm', 'backup-passphrase', 'backup-confirm', 'verify-passphrase']) $(id).value = '';
+};
+const postCard = (post, author) => {
+  const article = document.createElement('article');
+  article.className = 'post-card';
+  const name = document.createElement('strong');
+  name.textContent = author;
+  const timestamp = document.createElement('time');
+  const date = new Date(post.timestamp * 1000);
+  timestamp.textContent = Number.isFinite(date.getTime()) ? date.toLocaleString() : 'Timestamp unavailable';
+  if (Number.isFinite(date.getTime())) timestamp.dateTime = date.toISOString();
+  const content = document.createElement('p');
+  content.textContent = post.content;
+  article.append(name, timestamp, content);
+  return article;
+};
+const showIdentity = identity => {
+  publicIdentity = identity;
+  $('profile-name').textContent = $('edit-name').value = identity.author_name;
+  $('profile-bio').textContent = $('edit-bio').value = identity.bio;
+  $('own-key').textContent = identity.record_key;
+  const posts = [...(identity.history ?? [])].reverse();
+  $('authored-history').replaceChildren(...posts.map(post => postCard(post, identity.author_name)));
+  if (!posts.length) $('authored-history').textContent = 'No locally saved posts yet.';
+};
+const showFeed = result => {
+  $('feed').textContent = JSON.stringify(result, null, 2);
+  const posts = result.posts ?? [result];
+  const author = result.metadata?.author_name ?? publicIdentity.author_name;
+  const heading = document.createElement('h3');
+  heading.textContent = author;
+  const bio = document.createElement('p');
+  bio.textContent = result.metadata?.bio ?? '';
+  $('feed-cards').replaceChildren(heading, bio, ...posts.map(post => postCard(post, author)));
+  if (!posts.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No posts yet.';
+    $('feed-cards').append(empty);
+  }
 };
 const controls = () => {
   for (const id of ['create-fields', 'unlock-fields', 'restore-fields', 'start', 'unlock-start',
     'restore-start', 'show-create', 'show-unlock', 'show-restore', 'restore-back']) $(id).disabled = authenticating || active;
   for (const id of ['backup-fields', 'download-backup']) $(id).disabled = !active || !attached || busy;
   for (const id of ['verify-fields', 'verify-backup']) $(id).disabled = !active || busy;
+  for (const id of ['profile-fields', 'save-profile']) $(id).disabled = !active || !attached || busy;
+  $('copy-key').disabled = !active;
   $('publish').disabled = $('read').disabled = !active || !attached || busy;
+  const length = Array.from($('content').value).length;
+  $('content-count').textContent = `${length} / 280`;
+  $('publish').disabled ||= !length || length > 280 || !$('content').value.trim();
   $('content').disabled = busy;
   $('stop').disabled = !active || busy;
   $('bootstrap').disabled = active || authenticating;
@@ -30,6 +74,8 @@ const showMode = next => {
 const finish = message => {
   generation++;
   clearInterval(polling);
+  clearTimeout(draftTimer);
+  draftVersion++;
   worker?.terminate();
   worker = undefined;
   for (const request of requests.values()) {
@@ -38,7 +84,8 @@ const finish = message => {
   }
   requests.clear();
   active = attached = busy = authenticating = false;
-  for (const id of ['profile-name', 'profile-bio', 'own-key', 'feed', 'storage']) $(id).textContent = '';
+  for (const id of ['profile-name', 'profile-bio', 'own-key', 'feed', 'feed-cards', 'authored-history', 'draft-status', 'storage']) $(id).textContent = '';
+  publicIdentity = undefined;
   $('key').value = $('content').value = '';
   $('content').readOnly = false;
   showMode(mode);
@@ -95,6 +142,7 @@ const watchAttachment = run => {
         if (identity.probe_post) $('content').value = identity.probe_post.content;
         else if ($('content').readOnly) $('content').value = '';
         $('content').readOnly = !!identity.probe_post;
+        showIdentity(identity);
         attached = true;
         controls();
         $('status').textContent = 'Connected to Veilid. Ready to publish and read.';
@@ -127,12 +175,11 @@ const authenticate = async (action, value) => {
     active = true;
     authenticating = false;
     mode = 'unlock';
-    $('profile-name').textContent = state.identity.author_name;
-    $('profile-bio').textContent = state.identity.bio;
-    $('own-key').textContent = state.identity.record_key;
+    showIdentity(state.identity);
     $('key').value = state.identity.record_key;
     $('storage').textContent = String(state.starts);
-    $('content').value = state.identity.probe_post?.content ?? '';
+    $('content').value = state.identity.probe_post?.content ?? state.identity.draft ?? '';
+    $('draft-status').textContent = state.identity.draft ? 'Draft restored from encrypted storage.' : 'Unpublished drafts stay in this browser, not in backups.';
     $('content').readOnly = !!state.identity.probe_post;
     showMode(mode);
     controls();
@@ -166,6 +213,49 @@ $('show-create').onclick = () => showMode('create');
 $('show-unlock').onclick = () => showMode('unlock');
 $('show-restore').onclick = () => showMode('restore');
 $('restore-back').onclick = () => showMode('create');
+const saveDraft = async () => {
+  if (!active || $('content').readOnly) return true;
+  const run = generation, version = ++draftVersion;
+  $('draft-status').textContent = 'Saving draft...';
+  try {
+    await call('draft', $('content').value);
+    if (run === generation && version === draftVersion) $('draft-status').textContent = 'Draft saved on this browser.';
+    return true;
+  } catch (failure) {
+    if (run === generation && version === draftVersion) $('draft-status').textContent = `Draft not saved: ${failure.message}`;
+    return false;
+  }
+};
+$('content').oninput = () => {
+  controls();
+  draftVersion++;
+  clearTimeout(draftTimer);
+  $('draft-status').textContent = 'Draft has unsaved changes.';
+  draftTimer = setTimeout(saveDraft, 300);
+};
+$('profile-form').onsubmit = async event => {
+  event.preventDefault();
+  if (busy || !attached) return;
+  const run = generation;
+  busy = true;
+  controls();
+  $('status').textContent = 'Updating public profile...';
+  try {
+    const identity = await call('update_profile', { author_name: $('edit-name').value, bio: $('edit-bio').value });
+    if (run === generation) { showIdentity(identity); $('status').textContent = 'Public profile updated.'; }
+  } catch (failure) {
+    if (run === generation) $('status').textContent = `Profile update not confirmed: ${failure.message}`;
+  } finally { if (run === generation) { busy = false; controls(); } }
+};
+$('copy-key').onclick = async () => {
+  const run = generation;
+  try {
+    await navigator.clipboard.writeText($('own-key').textContent);
+    if (run === generation) $('status').textContent = 'RecordKey copied.';
+  } catch (failure) {
+    if (run === generation) $('status').textContent = `Copy failed: ${failure.message}. Select the RecordKey to copy it manually.`;
+  }
+};
 const readBackup = async id => {
   const file = $(id).files[0];
   if (!file) throw new Error('Select an encrypted backup.');
@@ -242,10 +332,22 @@ $('verify-form').onsubmit = async event => {
   }
 };
 $('stop').onclick = async () => {
-  clearInterval(polling);
+  const run = generation;
   busy = true;
   controls();
   $('status').textContent = 'Locking identity...';
+  clearTimeout(draftTimer);
+  const saved = await saveDraft();
+  if (run !== generation) return;
+  if (!saved) {
+    if (!window.confirm(`${$('draft-status').textContent}. Lock anyway and discard the unsaved draft?`)) {
+      busy = false;
+      controls();
+      $('status').textContent = 'Lock cancelled. Copy your unsaved draft before closing the page.';
+      return;
+    }
+  }
+  clearInterval(polling);
   try { await call('stop'); finish('Identity locked.'); }
   catch (failure) { finish(`Lock failed: ${failure.message}`); }
 };
@@ -256,14 +358,20 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
     controls();
     $('status').textContent = action === 'publish' ? 'Publishing; do not resend different text.' : 'Reading...';
     $('feed').textContent = '';
+    $('feed-cards').replaceChildren();
+    if (action === 'publish') { clearTimeout(draftTimer); draftVersion++; }
     try {
       const result = await call(action, $(input).value);
       if (run !== generation) return;
-      $('feed').textContent = JSON.stringify(result, null, 2);
+      showFeed(result);
       $('status').textContent = 'Confirmed.';
       if (action === 'publish') {
         $('content').value = '';
         $('content').readOnly = false;
+        $('draft-status').textContent = 'Published. Your next draft will be saved here.';
+        showIdentity({ ...publicIdentity, probe_post: null, draft: '',
+          history: [...(publicIdentity.history ?? []).filter(post => post.index !== result.index), result]
+            .sort((a, b) => a.index - b.index).slice(-1000) });
       }
     } catch (failure) {
       if (run !== generation) return;
@@ -277,6 +385,7 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
             $('content').readOnly = true;
           } else {
             $('content').readOnly = false;
+            await saveDraft();
           }
         } catch (profileFailure) {
           if (run === generation) finish(profileFailure.message);

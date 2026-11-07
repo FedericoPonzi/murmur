@@ -32,6 +32,13 @@ try {
   assert(identity.author_name === credentials.author_name && identity.bio === credentials.bio, 'Profile was not preserved.');
   assert(!/"(?:writer|secret|passphrase)"/.test(JSON.stringify(created)), 'Credentials escaped the worker.');
   assert(JSON.stringify(await node.call('profile')) === JSON.stringify(identity), 'Public identity differs.');
+  const draft = 'A disposable encrypted draft';
+  await node.call('draft', draft);
+  identity.draft = draft;
+  assert((await node.call('profile')).draft === draft, 'Draft was not saved.');
+  const rows = JSON.parse(await storage_snapshot(namespace));
+  assert(!rows.some(row => [row.key, row.value].some(bytes =>
+    new TextDecoder().decode(new Uint8Array(bytes)).includes(draft))), 'Draft appeared in plaintext storage.');
   await rejects(() => node.call('publish', 'Must not publish while offline.'));
   await node.call('stop');
   for (const action of ['profile', 'publish', 'identity']) {
@@ -55,6 +62,9 @@ try {
   assert(await node.call('has_storage') === true, 'Stored identity was not detected.');
   assert(JSON.stringify((await node.call('unlock', { passphrase: credentials.passphrase })).identity) === JSON.stringify(identity),
     'Interrupted session did not restore its identity.');
+  await node.call('draft', '');
+  await node.call('stop');
+  assert((await node.call('unlock', { passphrase: credentials.passphrase })).identity.draft === '', 'Cleared draft came back.');
   await node.call('stop');
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {

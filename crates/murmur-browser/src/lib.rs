@@ -61,6 +61,8 @@ struct TestIdentity {
     history: Vec<Post>,
     #[serde(default)]
     imported: bool,
+    #[serde(default)]
+    draft: String,
 }
 
 fn error(message: &str) -> JsValue {
@@ -217,6 +219,7 @@ pub async fn restore_profile_node(
             profile: Some(metadata),
             history: credentials.history,
             imported: true,
+            draft: String::new(),
         });
         node.save_identity().await
     }
@@ -341,6 +344,7 @@ impl BrowserNode {
                 "bio": profile.map_or("", |profile| profile.bio.as_str()),
                 "probe_post": identity.post,
                 "history": identity.history,
+                "draft": identity.draft,
             })
         });
         String::from_utf8(encode(&public)?).map_err(|_| error("JSON encoding failed"))
@@ -354,6 +358,57 @@ impl BrowserNode {
             "protected": self.protected,
         }))?)
         .map_err(|_| error("JSON encoding failed"))
+    }
+
+    pub async fn save_draft(&mut self, content: String) -> Result<()> {
+        if content.chars().count() > 4000 {
+            return Err(error(
+                "Draft exceeds the 4000-character local storage limit",
+            ));
+        }
+        let identity = self.identity.as_mut().ok_or_else(|| error("No identity"))?;
+        if identity
+            .post
+            .as_ref()
+            .is_some_and(|post| post.content != content)
+        {
+            return Err(error("A pending publication must keep its original text"));
+        }
+        let previous = std::mem::replace(&mut identity.draft, content);
+        if let Err(failure) = self.save_identity().await {
+            self.identity
+                .as_mut()
+                .ok_or_else(|| error("No identity"))?
+                .draft = previous;
+            return Err(failure);
+        }
+        Ok(())
+    }
+
+    pub async fn update_profile(&mut self, value: String) -> Result<String> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Profile {
+            author_name: String,
+            bio: String,
+        }
+        let profile: Profile = decode(value.as_bytes())?;
+        self.require_ready().await?;
+        let identity = self.identity.as_ref().ok_or_else(|| error("No identity"))?;
+        let record = VeilidRecord {
+            context: &self.context,
+            key: identity.key.clone(),
+            writer: Some(identity.writer.clone()),
+        };
+        let updated = murmur_core::update_profile(&record, profile.author_name, profile.bio)
+            .await
+            .map_err(core_error)?;
+        self.identity
+            .as_mut()
+            .ok_or_else(|| error("No identity"))?
+            .profile = Some(updated);
+        self.save_identity().await?;
+        self.local_identity()
     }
 
     pub async fn identity_key(&mut self) -> Result<String> {
@@ -635,6 +690,7 @@ impl BrowserNode {
         let old_profile = identity.profile.clone();
         murmur_core::credentials::retain_post(&mut identity.history, pending.clone())
             .map_err(core_error)?;
+        let old_draft = std::mem::take(&mut identity.draft);
         if let Some(profile) = &mut identity.profile {
             profile.latest_post_index = profile.latest_post_index.max(Some(pending.index));
         }
@@ -644,6 +700,7 @@ impl BrowserNode {
             identity.post = Some(pending);
             identity.history = old_history;
             identity.profile = old_profile;
+            identity.draft = old_draft;
             return Err(failure);
         }
         Ok(())
@@ -682,6 +739,7 @@ impl BrowserNode {
             profile,
             history: vec![],
             imported: false,
+            draft: String::new(),
         });
         self.save_identity().await
     }

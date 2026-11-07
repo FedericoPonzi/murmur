@@ -47,7 +47,16 @@ def check(storage_only=False):
         driver.set_window_size(1280, 900)
         wait = WebDriverWait(driver, 180)
         element = lambda id: driver.find_element(By.ID, id)
-        text = lambda id: element(id).text
+        text = lambda id: element(id).get_attribute("textContent") if id == "feed" else element(id).text
+
+        def click(id):
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'})", element(id))
+            element(id).click()
+
+        def open_details(id):
+            summary = element(id).find_element(By.TAG_NAME, "summary")
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'})", summary)
+            summary.click()
 
         def storage(expected):
             wait.until(lambda _: element("storage").get_attribute("textContent") or element("start").is_enabled() or element("unlock-start").is_enabled())
@@ -69,12 +78,12 @@ def check(storage_only=False):
         element("bio").send_keys("A public disposable profile.")
         element("passphrase").send_keys(passphrase)
         element("confirm-passphrase").send_keys(passphrase + " mismatch")
-        element("acknowledge").click()
-        element("start").click()
+        click("acknowledge")
+        click("start")
         wait.until(lambda _: "do not match" in text("status"))
         element("confirm-passphrase").clear()
         element("confirm-passphrase").send_keys(passphrase)
-        element("start").click()
+        click("start")
         storage(1)
         key = text("own-key")
         assert key.startswith("VLD0:")
@@ -86,8 +95,8 @@ def check(storage_only=False):
             driver.set_window_size(width, 900)
             assert driver.execute_script("return document.documentElement.scrollWidth <= innerWidth")
         if not storage_only:
-            wait.until(lambda _: element("publish").is_enabled())
-            element("read").click()
+            wait.until(lambda _: element("read").is_enabled())
+            click("read")
             wait.until(lambda _: key in text("feed"))
             initial = json.loads(text("feed"))
             assert initial["posts"] == []
@@ -98,13 +107,13 @@ def check(storage_only=False):
             visit()
             wait.until(lambda _: element("unlock-start").is_enabled())
             element("unlock-passphrase").send_keys(passphrase)
-            element("unlock-start").click()
+            click("unlock-start")
             wait.until(lambda _: "Another tab" in text("status"))
             driver.close()
             driver.switch_to.window(first)
             content = "Murmur disposable browser test <b>literal text</b>"
             element("content").send_keys(content)
-            element("publish").click()
+            click("publish")
             wait.until(lambda _: content in text("feed"))
             assert not element("feed").find_elements(By.TAG_NAME, "b")
             assert json.loads(text("feed"))["index"] == 0
@@ -112,16 +121,27 @@ def check(storage_only=False):
             assert not element("content").get_attribute("readonly")
             content = "A second disposable browser post"
             element("content").send_keys(content)
-            element("publish").click()
+            click("publish")
             wait.until(lambda _: content in text("feed"))
             assert json.loads(text("feed"))["index"] == 1
             assert element("content").get_attribute("value") == ""
+            open_details("profile-settings")
+            author = "Updated <b>author</b>"
+            element("edit-name").clear()
+            element("edit-name").send_keys(author)
+            click("save-profile")
+            wait.until(lambda _: text("status") == "Public profile updated.")
+            assert text("own-key") == key
+            assert text("profile-name") == author
             element("key").clear()
             element("key").send_keys("invalid-key")
-            element("read").click()
+            click("read")
             wait.until(lambda _: "Invalid Veilid RecordKey" in text("status"))
             assert text("feed") == ""
-        element("stop").click()
+        draft = "An unpublished encrypted draft"
+        element("content").send_keys(draft)
+        wait.until(lambda _: text("draft-status") == "Draft saved on this browser.")
+        click("stop")
         wait.until(lambda _: text("status") == "Identity locked.")
         assert text("own-key") == text("profile-name") == text("feed") == ""
         assert element("publish").is_enabled() is False
@@ -130,22 +150,23 @@ def check(storage_only=False):
         assert element("unlock-passphrase").get_attribute("value") == ""
         assert not element("session").is_displayed()
         element("unlock-passphrase").send_keys("incorrect passphrase")
-        element("unlock-start").click()
+        click("unlock-start")
         wait.until(lambda _: "Unlock failed" in text("status"))
         assert not element("session").is_displayed()
         assert element("unlock-passphrase").get_attribute("value") == ""
         element("unlock-passphrase").send_keys(passphrase)
-        element("unlock-start").click()
+        click("unlock-start")
         storage(2)
         assert text("own-key") == key
         assert text("profile-name") == author
+        assert element("content").get_attribute("value") == draft
         if storage_only:
             log("PASS: identity creation, literal profile display, locking, password rejection, and reload/unlock.")
         else:
             wait.until(lambda _: element("read").is_enabled())
-            assert element("content").get_attribute("value") == ""
+            assert element("content").get_attribute("value") == draft
             assert not element("content").get_attribute("readonly")
-            element("read").click()
+            click("read")
             wait.until(lambda _: content in text("feed"))
             bridge = os.environ.get("MURMUR_BRIDGE_URL", "").rstrip("/")
             if not bridge:
@@ -154,7 +175,7 @@ def check(storage_only=False):
                 me = json.load(response)
             element("key").clear()
             element("key").send_keys(me["record_key"])
-            element("read").click()
+            click("read")
             wait.until(lambda _: me["record_key"] in text("feed"))
             deadline = time.monotonic() + 90
             while time.monotonic() < deadline:
@@ -175,22 +196,21 @@ def check(storage_only=False):
             else:
                 raise AssertionError("Native node did not confirm the browser post.")
             log("PASS: browser/native cross-reads, publication, and stable identity/feed after reload.")
-            element("backup-settings").find_element(By.TAG_NAME, "summary").click()
+            open_details("backup-settings")
             backup_passphrase = "disposable saved backup passphrase"
             element("backup-passphrase").send_keys(backup_passphrase)
             element("backup-confirm").send_keys(backup_passphrase)
-            element("download-backup").click()
+            click("download-backup")
             backup_file = artifacts / "murmur-identity.murmur"
             wait.until(lambda _: backup_file.is_file())
             wait.until(lambda _: text("status").startswith("Backup prepared"))
             assert set(json.loads(backup_file.read_text())) == {"header", "ciphertext"}
             element("verify-file").send_keys(str(backup_file))
             element("verify-passphrase").send_keys(backup_passphrase)
-            element("verify-backup").click()
+            click("verify-backup")
             wait.until(lambda _: text("status").startswith("Verified:") or "verification failed" in text("status"))
             assert text("status").startswith("Verified:"), text("status")
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'})", element("stop"))
-            element("stop").click()
+            click("stop")
             wait.until(lambda _: text("status") == "Identity locked.")
             root = Path(__file__).resolve().parent.parent
             combined = bool(os.environ.get("MURMUR_PREVIEW_URL"))
@@ -198,22 +218,22 @@ def check(storage_only=False):
             threading.Thread(target=restore_server.serve_forever, daemon=True).start()
             driver.get(f"http://127.0.0.1:{restore_server.server_port}/" + ("app/" if combined else ""))
             wait.until(lambda _: element("show-restore").is_enabled())
-            element("show-restore").click()
+            click("show-restore")
             element("restore-file").send_keys(str(backup_file))
             element("restore-passphrase").send_keys(backup_passphrase)
             element("restore-local-passphrase").send_keys(passphrase)
             element("restore-confirm").send_keys(passphrase)
-            element("restore-acknowledge").click()
-            element("restore-start").click()
+            click("restore-acknowledge")
+            click("restore-start")
             storage(1)
             assert text("own-key") == key
-            wait.until(lambda _: element("publish").is_enabled())
+            wait.until(lambda _: element("read").is_enabled())
             content = "Disposable post from the restored browser"
             element("content").send_keys(content)
-            element("publish").click()
+            click("publish")
             wait.until(lambda _: content in text("feed"))
             assert json.loads(text("feed"))["index"] == 2
-            element("read").click()
+            click("read")
             wait.until(lambda _: '"posts"' in text("feed"))
             assert [post["index"] for post in json.loads(text("feed"))["posts"]] == [2, 1, 0]
             log("PASS: downloaded backup verification, fresh-origin UI restore, and continued publication.")

@@ -20,6 +20,12 @@ Open `http://localhost:8000`. Create a profile with a passphrase, then wait for
 **Connected to Veilid** before publishing or reading. Publish one test post; read
 another RecordKey, or share your public RecordKey with the native bridge.
 After confirmation, the composer clears so you can publish another post.
+Drafts are saved in encrypted browser storage. Wait for **Draft saved on this
+browser** before reloading. Unpublished drafts are not included in portable
+backups; interrupted publications are. **Your saved posts** shows up to 1000
+locally confirmed posts, including those recovered from a backup.
+Use **Edit public profile** to change your name or bio without changing your
+RecordKey. **Copy RecordKey** lets another reader find the same feed.
 Lock or reload the page, then unlock with the same passphrase to restore the
 same key and posts. An uncertain publication keeps its original text for retry;
 confirmation releases the composer without advancing the index twice.

@@ -8,10 +8,16 @@ const wait = async condition => {
 };
 function installWorker() {
   window.networkReady = false;
-  const identity = { record_key: 'VLD0:disposable', author_name: 'Disposable author', bio: '', probe_post: null };
+  window.confirm = () => false;
+  const identity = { record_key: 'VLD0:disposable', author_name: 'Disposable author', bio: '', probe_post: null,
+    draft: '', history: [{ index: 0, timestamp: 1, content: 'Existing <b>literal</b> post' }] };
   window.Worker = class {
     postMessage({ id, action, value }) {
       value = structuredClone(value);
+      if (action === 'draft' && !window.failDraft) {
+        identity.draft = window.lastSavedDraft = value;
+      }
+      if (action === 'update_profile') Object.assign(identity, value);
       const results = {
         has_storage: false, create: { starts: 1, protected: true, identity },
         restore: { starts: 2, protected: true, identity },
@@ -19,9 +25,12 @@ function installWorker() {
         reconcile: identity, stop: 'Stopped.',
         backup: '{"header":{"version":1},"ciphertext":[1]}',
         verify_backup: identity.record_key,
+        profile: identity, update_profile: identity,
       };
       const error = action === 'restore' && value.backup_passphrase !== 'disposable backup passphrase'
-        ? 'Wrong passphrase or damaged credential envelope' : undefined;
+        ? 'Wrong passphrase or damaged credential envelope'
+        : action === 'draft' && window.failDraft ? 'Storage unavailable'
+        : action === 'publish' ? 'Network temporarily unavailable' : undefined;
       queueMicrotask(() => { if (!this.terminated) this.onmessage({ data: { id, result: results[action], error } }); });
     }
     terminate() { this.terminated = true; }
@@ -45,11 +54,34 @@ try {
   element('acknowledge').checked = true;
   element('create-form').requestSubmit();
   await wait(() => !element('session').hidden);
+  frame.contentWindow.failDraft = true;
+  element('content').value = 'An unsaved draft before connecting';
+  element('content').dispatchEvent(new Event('input'));
+  element('stop').click();
+  await wait(() => element('status').textContent.startsWith('Lock cancelled'));
+  frame.contentWindow.failDraft = false;
   const draft = 'A draft typed while connecting';
   element('content').value = draft;
+  element('content').dispatchEvent(new Event('input'));
+  await wait(() => element('draft-status')?.textContent === 'Draft saved on this browser.');
   frame.contentWindow.networkReady = true;
   await wait(() => !element('publish').disabled);
   assert(element('content').value === draft, 'Attachment erased the draft.');
+  const latest = 'Text typed immediately before a failed publish';
+  element('content').value = latest;
+  element('content').dispatchEvent(new Event('input'));
+  element('publish').click();
+  await wait(() => frame.contentWindow.lastSavedDraft === latest);
+  assert(!element('content').readOnly, 'A pre-publication failure froze the draft.');
+  assert(element('authored-history').textContent.includes('Existing <b>literal</b> post'), 'Local history was not rendered.');
+  assert(!element('authored-history').querySelector('b'), 'Post text was interpreted as markup.');
+  element('profile-settings').open = true;
+  element('edit-name').value = 'New <b>author</b>';
+  element('edit-bio').value = 'Updated bio';
+  element('profile-form').requestSubmit();
+  await wait(() => element('profile-name').textContent === 'New <b>author</b>');
+  assert(element('own-key').textContent === 'VLD0:disposable', 'Profile editing changed the feed key.');
+  assert(!element('profile-name').querySelector('b'), 'Profile name was interpreted as markup.');
   assert(element('backup-form'), 'Missing encrypted backup form.');
   element('backup-settings').open = true;
   element('backup-passphrase').value = element('backup-confirm').value = 'disposable backup passphrase';
