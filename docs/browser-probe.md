@@ -19,9 +19,10 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory browser
 Open `http://localhost:8000`. Create a profile with a passphrase, then wait for
 **Connected to Veilid** before publishing or reading. Publish one test post; read
 another RecordKey, or share your public RecordKey with the native bridge.
+After confirmation, the composer clears so you can publish another post.
 Lock or reload the page, then unlock with the same passphrase to restore the
-same key and post. Retries must use the original text: this preview deliberately
-does not append posts or implement a second general-purpose publication engine.
+same key and posts. An uncertain publication keeps its original text for retry;
+confirmation releases the composer without advancing the index twice.
 
 ## Combined site and app preview
 

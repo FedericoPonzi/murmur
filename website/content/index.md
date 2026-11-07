@@ -41,7 +41,7 @@
 <div><p class="eyebrow">Less platform. More people.</p><h2 id="how-heading">A feed starts<br>with a key.</h2><p>You do not need an email address or a central account to publish. Your node holds the credentials for your feed.</p><a class="text-link" href="participate.html">Explore participation <span aria-hidden="true">&rarr;</span></a></div>
 <ol class="steps" role="list">
 <li><span class="step-number" aria-hidden="true">01</span><div><h3>Start locally</h3><p>Try the browser preview or run the native PoC. Murmur embeds its own Veilid node.</p></div></li>
-<li><span class="step-number" aria-hidden="true">02</span><div><h3>Share a short thought</h3><p>The browser probe publishes one disposable test post. The native CLI supports continuing publication.</p></div></li>
+<li><span class="step-number" aria-hidden="true">02</span><div><h3>Share a short thought</h3><p>Publish short posts from your browser or the native CLI. Your recent feed travels over Veilid.</p></div></li>
 <li><span class="step-number" aria-hidden="true">03</span><div><h3>Pass on your RecordKey</h3><p>Readers use your key to open your recent posts. Posts are public to anyone with the complete key.</p></div></li>
 </ol>
 </section>

@@ -300,35 +300,44 @@ impl BrowserNode {
             .to_string())
     }
 
-    pub async fn publish_probe(&mut self, content: String) -> Result<String> {
+    pub async fn reconcile_pending(&mut self) -> Result<String> {
+        self.require_ready().await?;
+        let identity = self.identity.as_ref().ok_or_else(|| error("No identity"))?;
+        if let Some(post) = &identity.post {
+            let record = VeilidRecord {
+                context: &self.context,
+                key: identity.key.clone(),
+                writer: Some(identity.writer.clone()),
+            };
+            let metadata = murmur_core::read_metadata(&record)
+                .await
+                .map_err(core_error)?;
+            if metadata.latest_post_index == Some(post.index) {
+                murmur_core::commit_post(&record, &metadata, post)
+                    .await
+                    .map_err(core_error)?;
+                self.clear_pending().await?;
+            }
+        }
+        self.local_identity()
+    }
+
+    pub async fn publish_post(&mut self, content: String) -> Result<String> {
         murmur_model::validate_content(&content).map_err(|failure| error(&failure.to_string()))?;
         self.require_ready().await?;
         let identity = self
             .identity
-            .as_mut()
-            .ok_or_else(|| error("Start an attached node first"))?;
-        if let Some(post) = &identity.post {
-            if post.content != content {
-                return Err(error(
-                    "This probe publishes only one post; retry with the same text",
-                ));
-            }
-        } else {
-            identity.post = Some(Post {
-                index: 0,
-                timestamp: (now() / 1000.0) as u64,
-                content,
-            });
-        }
-        self.save_identity().await?;
-        let identity = self
-            .identity
             .as_ref()
-            .ok_or_else(|| error("No test identity"))?;
-        let post = identity
+            .ok_or_else(|| error("Start an attached node first"))?;
+        if identity
             .post
             .as_ref()
-            .ok_or_else(|| error("No test post"))?;
+            .is_some_and(|post| post.content != content)
+        {
+            return Err(error(
+                "A saved publication needs confirmation; retry its original text",
+            ));
+        }
         let record = VeilidRecord {
             context: &self.context,
             key: identity.key.clone(),
@@ -337,10 +346,25 @@ impl BrowserNode {
         let metadata = murmur_core::read_metadata(&record)
             .await
             .map_err(core_error)?;
-        murmur_core::commit_post(&record, &metadata, post)
+        let post = match &identity.post {
+            Some(post) => post.clone(),
+            None => Post {
+                index: murmur_model::next_index(metadata.latest_post_index)
+                    .map_err(|failure| error(&failure.to_string()))?,
+                timestamp: (now() / 1000.0) as u64,
+                content,
+            },
+        };
+        self.identity
+            .as_mut()
+            .ok_or_else(|| error("No identity"))?
+            .post = Some(post.clone());
+        self.save_identity().await?;
+        murmur_core::commit_post(&record, &metadata, &post)
             .await
             .map_err(core_error)?;
-        self.read_feed(identity.key.to_string()).await
+        self.clear_pending().await?;
+        String::from_utf8(encode(&post)?).map_err(|_| error("JSON encoding failed"))
     }
 
     pub async fn read_feed(&self, key: String) -> Result<String> {
@@ -461,6 +485,23 @@ impl BrowserNode {
 }
 
 impl BrowserNode {
+    async fn clear_pending(&mut self) -> Result<()> {
+        let pending = self
+            .identity
+            .as_mut()
+            .ok_or_else(|| error("No identity"))?
+            .post
+            .take();
+        if let Err(failure) = self.save_identity().await {
+            self.identity
+                .as_mut()
+                .ok_or_else(|| error("No identity"))?
+                .post = pending;
+            return Err(failure);
+        }
+        Ok(())
+    }
+
     async fn require_ready(&self) -> Result<()> {
         if !self
             .api

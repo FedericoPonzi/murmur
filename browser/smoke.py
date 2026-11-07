@@ -103,6 +103,15 @@ def check(storage_only=False):
             element("publish").click()
             wait.until(lambda _: content in text("feed"))
             assert not element("feed").find_elements(By.TAG_NAME, "b")
+            assert json.loads(text("feed"))["index"] == 0
+            assert element("content").get_attribute("value") == ""
+            assert not element("content").get_attribute("readonly")
+            content = "A second disposable browser post"
+            element("content").send_keys(content)
+            element("publish").click()
+            wait.until(lambda _: content in text("feed"))
+            assert json.loads(text("feed"))["index"] == 1
+            assert element("content").get_attribute("value") == ""
             element("key").clear()
             element("key").send_keys("invalid-key")
             element("read").click()
@@ -130,8 +139,8 @@ def check(storage_only=False):
             log("PASS: identity creation, literal profile display, locking, password rejection, and reload/unlock.")
         else:
             wait.until(lambda _: element("read").is_enabled())
-            assert element("content").get_attribute("value") == content
-            assert element("content").get_attribute("readonly")
+            assert element("content").get_attribute("value") == ""
+            assert not element("content").get_attribute("readonly")
             element("read").click()
             wait.until(lambda _: content in text("feed"))
             bridge = os.environ.get("MURMUR_BRIDGE_URL", "").rstrip("/")
@@ -153,6 +162,7 @@ def check(storage_only=False):
                     status, feed = response.status, json.load(response)
                 if status == 200 and feed.get("posts") and feed["posts"][0]["content"] == content:
                     assert feed["metadata"]["author_name"] == author
+                    assert [post["index"] for post in feed["posts"]] == [1, 0]
                     break
                 if status not in (200, 404, 502, 503, 504):
                     raise AssertionError(f"Native cross-read failed: HTTP {status}")

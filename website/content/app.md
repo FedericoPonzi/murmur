@@ -8,7 +8,7 @@ The full browser alpha remains in development.
 Follow the [browser probe guide](../docs/browser-probe.html) to build its WASM
 bindings, then build the site with `python3 website/build.py --with-app`.
 That includes the current preview at `/app/`: create a passphrase-protected
-identity, publish one disposable test post, and read other feeds by RecordKey.
+identity, publish posts, and read other feeds by RecordKey.
 Lock or reload the page to end the session; unlock to use the same identity.
 
 The [native read-only bridge](../docs/quick-start.html) remains available

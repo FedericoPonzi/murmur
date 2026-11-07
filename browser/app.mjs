@@ -10,6 +10,7 @@ const controls = () => {
   $('start').disabled = $('unlock-start').disabled = authenticating || active;
   $('show-create').disabled = $('show-unlock').disabled = authenticating || active;
   $('publish').disabled = $('read').disabled = !active || !attached || busy;
+  $('content').disabled = busy;
   $('stop').disabled = !active || busy;
   $('bootstrap').disabled = active || authenticating;
 };
@@ -84,7 +85,11 @@ const watchAttachment = run => {
       if (state.ready) {
         clearInterval(polling);
         await call('identity');
+        const identity = await call('reconcile');
         if (run !== generation) return;
+        if (identity.probe_post) $('content').value = identity.probe_post.content;
+        else if ($('content').readOnly) $('content').value = '';
+        $('content').readOnly = !!identity.probe_post;
         attached = true;
         controls();
         $('status').textContent = 'Connected to Veilid. Ready to publish and read.';
@@ -169,7 +174,10 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
       if (run !== generation) return;
       $('feed').textContent = JSON.stringify(result, null, 2);
       $('status').textContent = 'Confirmed.';
-      if (action === 'publish') $('content').readOnly = true;
+      if (action === 'publish') {
+        $('content').value = '';
+        $('content').readOnly = false;
+      }
     } catch (failure) {
       if (run !== generation) return;
       $('status').textContent = failure.message;
@@ -180,6 +188,8 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
           if (identity?.probe_post) {
             $('content').value = identity.probe_post.content;
             $('content').readOnly = true;
+          } else {
+            $('content').readOnly = false;
           }
         } catch (profileFailure) {
           if (run === generation) finish(profileFailure.message);

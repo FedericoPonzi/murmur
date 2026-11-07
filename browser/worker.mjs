@@ -83,12 +83,12 @@ if (typeof self !== 'undefined') {
           send(data.id, 'Stopped.');
         } else {
           if (!node) throw new Error('Start the node first.');
-          const methods = { status: 'status', profile: 'local_identity', identity: 'identity_key', publish: 'publish_probe', read: 'read_feed',
+          const methods = { status: 'status', profile: 'local_identity', identity: 'identity_key', reconcile: 'reconcile_pending', publish: 'publish_post', read: 'read_feed',
             test_seed: 'test_seed_identity', test_storage: 'test_storage' };
           const method = methods[data.action];
           if (!Object.hasOwn(methods, data.action) || typeof node[method] !== 'function') throw new Error('Unknown probe command.');
           const result = await node[method](data.value);
-          send(data.id, data.action === 'status' || data.action === 'profile' || data.action === 'publish' || data.action === 'read'
+          send(data.id, ['status', 'profile', 'reconcile', 'publish', 'read'].includes(data.action)
             ? JSON.parse(result) : result);
         }
       } catch (failure) { send(data.id, undefined, String(failure)); }

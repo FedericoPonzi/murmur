@@ -45,7 +45,9 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --locked --all-targets
       - name: Check browser worker
-        run: python3 browser/check.py
+        run: |
+          python3 browser/check.py
+          python3 browser/check.py --page app-tests.html
       - name: Run Clippy
         run: cargo clippy --workspace --locked --all-targets -- -D warnings
       - name: Build release
