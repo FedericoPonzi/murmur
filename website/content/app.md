@@ -18,4 +18,5 @@ Drafts stay encrypted in this browser. You can update your public profile
 without changing your RecordKey and revisit locally saved posts.
 
 The [native read-only bridge](../docs/quick-start.html) remains available
-separately. Save up to 50 follows on this browser; a combined timeline is planned.
+separately. Save up to 50 follows and refresh their combined recent-post timeline.
+Cached reads remain visible offline, with a timestamp and separate per-feed errors.

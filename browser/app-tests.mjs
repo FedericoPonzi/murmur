@@ -38,7 +38,9 @@ function installWorker() {
       const error = action === 'restore' && value.backup_passphrase !== 'disposable backup passphrase'
         ? 'Wrong passphrase or damaged credential envelope'
         : action === 'draft' && window.failDraft ? 'Storage unavailable'
-        : action === 'publish' ? 'Network temporarily unavailable' : undefined;
+        : action === 'publish' ? 'Network temporarily unavailable'
+        : action === 'read' && value === 'VLD0:existing' ? 'This feed is unavailable' : undefined;
+      if (action === 'read' && value !== 'VLD0:existing') results.read.metadata.latest_post_index = 0;
       queueMicrotask(() => { if (!this.terminated) this.onmessage({ data: { id, result: results[action], error } }); });
     }
     terminate() { this.terminated = true; }
@@ -150,6 +152,15 @@ try {
   element('follow').click();
   await wait(() => !element('follow').disabled);
   assert(element('follow-list').querySelectorAll('li').length === 2, 'Duplicate follow was saved.');
+  assert(element('refresh-timeline'), 'Missing merged timeline.');
+  element('refresh-timeline').click();
+  await wait(() => !element('refresh-timeline').disabled);
+  assert(element('timeline').textContent.includes('guest-readable'), 'One failed feed hid successful posts.');
+  assert(element('feed-status').textContent.includes('This feed is unavailable'), 'Per-feed failure was hidden.');
+  assert(!element('timeline').querySelector('b'), 'Timeline interpreted text as HTML.');
+  element('refresh-timeline').click();
+  await wait(() => !element('refresh-timeline').disabled);
+  assert(element('timeline').querySelectorAll('article').length === 1, 'Refresh duplicated cached posts.');
   Array.from(element('follow-list').querySelectorAll('li')).find(item => item.textContent.includes('VLD0:remote'))
     .querySelector('button:last-child').click();
   await wait(() => !element('follow-list').textContent.includes('VLD0:remote'));

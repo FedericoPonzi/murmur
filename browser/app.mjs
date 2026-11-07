@@ -1,9 +1,11 @@
-import { loadFollows, addFollow, removeFollow, resetFollows } from './feeds.mjs';
+import { loadFollows, addFollow, removeFollow, resetFollows, saveFeed, cachedFeeds, timeline } from './feeds.mjs';
 
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
 let active = false, attached = false, busy = false, authenticating = true, mode = 'create';
 let publicIdentity, draftTimer, draftVersion = 0, guest = false;
+let refreshTask;
+const feedProgress = new Map();
 const requests = new Map();
 const clearPassphrases = () => {
   for (const id of ['passphrase', 'confirm-passphrase', 'unlock-passphrase', 'restore-passphrase',
@@ -52,6 +54,9 @@ const showFeed = result => {
 };
 const controls = () => {
   $('follow').disabled = !active || busy;
+  $('refresh-timeline').disabled = !active || !attached || busy || !$('follow-list').children.length;
+  $('cancel-timeline').disabled = !refreshTask || refreshTask.cancelled;
+  for (const button of $('timeline').querySelectorAll('button')) button.disabled = !active || !attached || busy;
   $('reset-follows').disabled = busy;
   for (const button of $('follow-list').querySelectorAll('button')) {
     button.disabled = !active || busy || (button.dataset.action === 'read' && !attached);
@@ -102,10 +107,38 @@ const renderFollows = follows => {
     return item;
   }));
   $('reset-follows').hidden = true;
+  renderTimeline();
   controls();
+};
+const renderTimeline = () => {
+  const snapshots = new Map(cachedFeeds(localStorage).map(entry => [entry.key, entry]));
+  const entries = timeline(localStorage);
+  $('timeline').replaceChildren(...entries.map(entry => {
+    const article = postCard(entry.post, entry.metadata.author_name);
+    const read = document.createElement('button');
+    read.type = 'button';
+    read.className = 'quiet-button';
+    read.textContent = `Read feed ${entry.key.slice(0, 20)}...`;
+    read.title = entry.key;
+    read.disabled = !active || !attached || busy;
+    read.onclick = () => { $('key').value = entry.key; $('read').click(); };
+    article.append(read);
+    return article;
+  }));
+  if (!entries.length) $('timeline').textContent = 'No cached posts yet. Follow a feed and refresh.';
+  $('feed-status').replaceChildren(...loadFollows(localStorage).map(key => {
+    const item = document.createElement('li');
+    const cached = snapshots.get(key), progress = feedProgress.get(key);
+    const label = cached?.feed.metadata.author_name ?? key;
+    const freshness = cached ? `Cached read: ${new Date(cached.read_at).toLocaleString()}.` : 'No cached read.';
+    item.textContent = `${label}: ${progress?.loading ? 'Reading... ' : ''}${progress?.error ? `Read failed: ${progress.error}. ` : ''}${freshness}`;
+    return item;
+  }));
 };
 const loadFollowView = () => {
   $('follow-list').replaceChildren();
+  $('timeline').replaceChildren();
+  $('feed-status').replaceChildren();
   $('follow-status').textContent = '';
   $('reset-follows').hidden = true;
   try { renderFollows(loadFollows(localStorage)); }
@@ -133,11 +166,55 @@ $('follow').onclick = async () => {
   } finally { if (run === generation) { busy = false; controls(); } }
 };
 $('reset-follows').onclick = () => {
-  if (!window.confirm('Reset only saved follows on this browser? Your author identity will not be changed.')) return;
+  if (!window.confirm('Reset follows and cached public feeds on this browser? Your author identity will not be changed.')) return;
   try {
     renderFollows(resetFollows(localStorage));
     $('follow-status').textContent = 'Saved follows reset. Your author identity is unchanged.';
   } catch (failure) { $('follow-status').textContent = `Could not reset follows: ${failure.message}`; }
+};
+$('refresh-timeline').onclick = async () => {
+  if (!active || !attached || busy) return;
+  const run = generation, task = { cancelled: false };
+  refreshTask = task;
+  busy = true;
+  controls();
+  let succeeded = 0, failed = 0;
+  try {
+    const keys = loadFollows(localStorage);
+    for (const key of keys) {
+      if (task.cancelled || run !== generation) break;
+      feedProgress.set(key, { loading: true });
+      renderTimeline();
+      $('status').textContent = `Reading followed feed ${succeeded + failed + 1} of ${keys.length}...`;
+      try {
+        const feed = await call('read', key);
+        if (run !== generation) return;
+        saveFeed(localStorage, key, feed, Date.now());
+        feedProgress.delete(key);
+        succeeded++;
+      } catch (failure) {
+        if (run !== generation) return;
+        feedProgress.set(key, { error: failure.message });
+        failed++;
+      }
+      renderTimeline();
+    }
+    if (run === generation) $('status').textContent = `${task.cancelled ? 'Refresh stopped' : 'Refresh finished'}: ${succeeded} updated, ${failed} failed.`;
+  } catch (failure) {
+    if (run === generation) {
+      loadFollowView();
+      $('follow-status').textContent = `Timeline refresh failed: ${failure.message}`;
+    }
+  } finally {
+    if (run === generation) { refreshTask = undefined; busy = false; controls(); }
+  }
+};
+$('cancel-timeline').onclick = () => {
+  if (refreshTask) {
+    refreshTask.cancelled = true;
+    controls();
+    $('status').textContent = 'Stopping refresh after the current bounded read finishes...';
+  }
 };
 const showMode = next => {
   mode = next;
@@ -159,6 +236,9 @@ const finish = message => {
   clearInterval(polling);
   clearTimeout(draftTimer);
   draftVersion++;
+  if (refreshTask) refreshTask.cancelled = true;
+  refreshTask = undefined;
+  feedProgress.clear();
   worker?.terminate();
   worker = undefined;
   for (const request of requests.values()) {
@@ -168,7 +248,7 @@ const finish = message => {
   requests.clear();
   active = attached = busy = authenticating = false;
   guest = false;
-  for (const id of ['profile-name', 'profile-bio', 'own-key', 'feed', 'feed-cards', 'authored-history', 'draft-status', 'storage', 'follow-list', 'follow-status']) $(id).textContent = '';
+  for (const id of ['profile-name', 'profile-bio', 'own-key', 'feed', 'feed-cards', 'authored-history', 'draft-status', 'storage', 'follow-list', 'follow-status', 'timeline', 'feed-status']) $(id).textContent = '';
   $('reset-follows').hidden = true;
   publicIdentity = undefined;
   $('key').value = $('content').value = '';

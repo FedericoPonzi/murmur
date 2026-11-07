@@ -35,6 +35,12 @@ it cannot initialize a feed or publish. **Stop reading** ends that session.
 Use **Follow this feed** to save a complete RecordKey. **Read** beside a saved
 feed opens it; **Unfollow** removes it. Up to 50 follows survive reload on this
 origin. The list is not passphrase-protected or included in identity backups.
+**Refresh followed feeds** merges their newest posts. Each feed reports its own
+read failure and last successful cached read; an unavailable feed does not erase
+other results. **Stop refresh** stops after the current bounded read completes.
+Cached public snapshots retain at most 20 posts per followed feed. They remain
+visible offline but may be stale. Ordering uses authors' reported times, so
+different clocks can put posts out of real-world order.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.
