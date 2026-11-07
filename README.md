@@ -46,3 +46,9 @@ The pinned dependencies use Rustls and bundled native libraries: `libssl-dev`
 and a Cap'n Proto compiler are not required for the normal locked build.
 See [user guide](docs/user-guide.md) and [developer guide](docs/dev-guide.md)
 for profile configuration, API details, testing, and build troubleshooting.
+
+## License
+
+Murmur's own code is [MIT licensed](LICENSE). Dependencies retain their own
+licenses, including Veilid's MPL-2.0. Redistribution must preserve applicable
+notices and satisfy each dependency's license obligations.
