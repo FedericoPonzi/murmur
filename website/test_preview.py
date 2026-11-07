@@ -120,6 +120,12 @@ class BuildTests(unittest.TestCase):
             self.assertIn("Planned", row)
             self.assertNotRegex(row, r"<a[\s>]")
 
+    def test_only_runtime_bindings_are_published(self):
+        private = self.root / "browser/pkg/private.json"
+        private.write_text('{"writer":"must-not-be-published"}')
+        self.build("--with-app")
+        self.assertFalse((self.output / "app/pkg/private.json").exists())
+
     def test_primary_navigation_reaches_landing_sections_and_app_from_docs(self):
         base = "https://preview.invalid/murmur/"
         navigation = Links(self.read("docs/index.html")).navigation

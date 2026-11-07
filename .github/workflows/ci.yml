@@ -68,6 +68,14 @@ jobs:
         run: cargo build -p murmur-browser --target wasm32-unknown-unknown --release --locked
       - name: Install WASM bindings tool
         run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - name: Assemble local browser preview
+        run: |
+          wasm-bindgen --target web --out-dir browser/pkg target/wasm32-unknown-unknown/release/murmur_browser.wasm
+          cargo install --git https://github.com/FedericoPonzi/genereto --rev 9a21250e4dcfb93bc7b03cb003619e621ae0b6c4 --locked
+          python3 -m unittest discover -s website -p 'test_*.py'
+          python3 website/build.py --with-app
+          cargo fetch --locked
+          python3 website/package.py --output "$RUNNER_TEMP/murmur-local-preview.zip"
       - name: Check credential format and protected storage in browser
         run: |
           cargo build -p murmur-browser --target wasm32-unknown-unknown --release --locked --features vault-tests
@@ -78,3 +86,11 @@ jobs:
           python3 browser/check.py --root "$RUNNER_TEMP/murmur-vault-tests" --page storage-tests.html
           python3 browser/check.py --root "$RUNNER_TEMP/murmur-vault-tests" --page identity-tests.html
           python3 browser/check.py --root "$RUNNER_TEMP/murmur-vault-tests" --page reader-tests.html
+      - name: Upload local preview
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: murmur-local-preview
+          path: ${{ runner.temp }}/murmur-local-preview.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

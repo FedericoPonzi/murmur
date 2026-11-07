@@ -92,6 +92,27 @@ a publishing service or automatic fallback. This is not a production server.
 
 To use a Genereto binary outside `PATH`, set `GENERETO` to its path.
 
+To package the assembled preview:
+
+```sh
+cargo fetch --locked
+python3 website/package.py --output /tmp/murmur-local-preview.zip
+```
+
+Use normal WASM bindings, not the `vault-tests` build. Packaging rejects test
+exports, extra assets, symlinks, and missing license notices. The ZIP includes
+a localhost-only Python server, source/toolchain provenance, checksums, and
+dependency licenses with exact source-download links. It contains no local
+identity data or private plans. CI uploads it only after the WASM checks pass.
+Fetching first supplies the full workspace metadata needed for offline notices,
+including crates not compiled into the browser.
+Some crates omit license texts from their published archives; the exact-version
+fallbacks in `website/license-notices` come from their upstream licenses:
+[Gloo](https://github.com/rustwasm/gloo/blob/07345515229f46045cfa4f480ae401a464a4569a/LICENSE-MIT),
+[keyvaluedb](https://gitlab.com/veilid/keyvaluedb/-/blob/3e90846b9761ac28a4e9d5e75debe343c2db7363/LICENSE-MIT),
+and [Tsify](https://github.com/madonoharu/tsify/blob/747541cfa11cb9002f8c58fa668fd13065282c0a/LICENSE_MIT).
+MPL-2.0 and Unlicense fallbacks reuse their corresponding included license texts.
+
 ## Identity and embedded node
 
 `murmur [--data-dir PATH] serve` acquires an OS file lock before opening stores.

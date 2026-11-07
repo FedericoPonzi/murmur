@@ -57,6 +57,14 @@ If it is not already confirmed, retry only the preserved text.
 
 ## Combined site and app preview
 
+The GitHub Actions **CI** workflow produces a **murmur-local-preview** artifact
+after its WASM checks pass. Download it from a successful run, extract the inner
+ZIP, open a terminal in `murmur-local-preview`, and run `python3 serve.py`
+(Python 3.10+). Open `http://localhost:8000/app/`; no Rust build is needed.
+This is the same experimental local preview, not public hosting or a signed
+release. `BUILD.json` identifies the source/toolchain and `SHA256SUMS` detects
+changed files; included checksums do not prove authenticity.
+
 After building the bindings above, install Genereto as described in the
 [developer guide](dev-guide.md#website-preview), then:
 

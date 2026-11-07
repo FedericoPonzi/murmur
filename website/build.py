@@ -84,7 +84,9 @@ def build(repository, with_app=False):
             )
             for asset in ("worker.mjs", "app.mjs", "feeds.mjs"):
                 shutil.copy2(browser / asset, assembled / "app" / asset)
-            shutil.copytree(browser / "pkg", assembled / "app/pkg")
+            (assembled / "app/pkg").mkdir()
+            for asset in ("murmur_browser.js", "murmur_browser_bg.wasm"):
+                shutil.copy2(browser / "pkg" / asset, assembled / "app/pkg" / asset)
         (work / "output").rename(work / "flat")
         assembled.rename(work / "output")
         subprocess.run([
