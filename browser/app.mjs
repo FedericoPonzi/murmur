@@ -1,5 +1,5 @@
 import { loadFollows, addFollow, removeFollow, resetFollows, saveFeed, cachedFeeds, timeline, markRead, feedLink, sharedFeed,
-  exportReadingList, decodeReadingList, importReadingList, READING_LIST_LIMIT } from './feeds.mjs';
+  exportReadingList, decodeReadingList, importReadingList, READING_LIST_LIMIT, muteFeed, mutedFeeds } from './feeds.mjs';
 
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
@@ -96,6 +96,7 @@ const controls = () => {
   $('bootstrap').disabled = active || authenticating;
 };
 const renderFollows = follows => {
+  const muted = mutedFeeds(localStorage);
   $('follow-list').replaceChildren(...follows.map(key => {
     const item = document.createElement('li');
     const label = document.createElement('span');
@@ -106,6 +107,17 @@ const renderFollows = follows => {
     read.dataset.action = 'read';
     read.setAttribute('aria-label', `Read feed ${key}`);
     read.onclick = () => { $('key').value = key; $('read').click(); };
+    const mute = document.createElement('button');
+    mute.type = 'button';
+    mute.dataset.action = 'mute';
+    mute.textContent = muted.includes(key) ? 'Unmute' : 'Mute';
+    mute.setAttribute('aria-label', `${mute.textContent} ${key}`);
+    mute.onclick = () => {
+      try {
+        renderFollows(muteFeed(localStorage, key, !muted.includes(key)));
+        $('follow-status').textContent = 'Home preferences saved. Muted feeds can still be read directly.';
+      } catch (failure) { $('follow-status').textContent = `Could not save mute: ${failure.message}`; }
+    };
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.textContent = 'Unfollow';
@@ -119,7 +131,7 @@ const renderFollows = follows => {
         $('follow-status').textContent = `Could not remove follow: ${failure.message}`;
       }
     };
-    item.append(label, read, remove);
+    item.append(label, read, mute, remove);
     return item;
   }));
   $('reset-follows').hidden = true;

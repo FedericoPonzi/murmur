@@ -55,6 +55,10 @@ unencrypted JSON. Keep this file private if your follows are sensitive.
 **Merge reading list** validates the keys and adds them without removing current
 follows or cached posts; the 50-feed limit still applies. This file contains no
 author credentials, drafts or cached posts and cannot replace an identity backup.
+**Mute** hides a followed feed from Home without deleting its cache or preventing
+direct reads. **Unmute** shows it again. Muted posts are not marked read by the
+Home read-marker button. Mutes are unencrypted local preferences and travel in
+reading-list exports; importing keeps existing mutes too.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.

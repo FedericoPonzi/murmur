@@ -22,7 +22,7 @@ const validate = state => {
   if (!state || state.version !== 1 || !Array.isArray(state.follows)
       || state.follows.length > FOLLOW_LIMIT
       || new Set(state.follows).size !== state.follows.length
-      || Object.keys(state).some(key => !['version', 'follows', 'cache', 'seen'].includes(key))
+      || Object.keys(state).some(key => !['version', 'follows', 'cache', 'seen', 'muted'].includes(key))
       || state.follows.some(key => typeof key !== 'string' || !key.startsWith('VLD0:') || key.length > 512)) {
     throw new Error('Saved follows are invalid or incompatible. They have not been replaced.');
   }
@@ -34,6 +34,10 @@ const validate = state => {
   if (state.seen !== undefined && (!state.seen || typeof state.seen !== 'object' || Array.isArray(state.seen)
       || Object.entries(state.seen).some(([key, index]) => !state.follows.includes(key) || !integer(index)))) {
     throw new Error('Saved unread state is invalid or incompatible. It has not been replaced.');
+  }
+  if (state.muted !== undefined && (!Array.isArray(state.muted) || new Set(state.muted).size !== state.muted.length
+      || state.muted.some(key => !state.follows.includes(key)))) {
+    throw new Error('Saved muted feeds are invalid or incompatible. They have not been replaced.');
   }
   return state;
 };
@@ -67,6 +71,7 @@ export function removeFollow(storage, key) {
   state.follows = state.follows.filter(existing => existing !== key);
   if (state.cache) delete state.cache[key];
   if (state.seen) delete state.seen[key];
+  if (state.muted) state.muted = state.muted.filter(existing => existing !== key);
   return save(storage, state);
 }
 export const resetFollows = storage => save(storage, { version: 1, follows: [] });
@@ -88,7 +93,7 @@ export function cachedFeeds(storage) {
 }
 export function timeline(storage) {
   const state = load(storage);
-  return cachedFeeds(storage).flatMap(({ key, feed, read_at }) =>
+  return cachedFeeds(storage).filter(entry => !state.muted?.includes(entry.key)).flatMap(({ key, feed, read_at }) =>
     feed.posts.map(post => ({ key, metadata: feed.metadata, post, read_at,
       unread: !Object.hasOwn(state.seen ?? {}, key) || post.index > state.seen[key] })))
     .sort((a, b) => b.post.timestamp - a.post.timestamp
@@ -98,6 +103,7 @@ export function markRead(storage) {
   const state = load(storage);
   const seen = { ...state.seen };
   for (const [key, entry] of Object.entries(state.cache ?? {})) {
+    if (state.muted?.includes(key)) continue;
     const index = entry.feed.metadata.latest_post_index;
     if (index !== null) seen[key] = Math.max(Object.hasOwn(seen, key) ? seen[key] : 0, index);
   }
@@ -120,17 +126,21 @@ export function sharedFeed(address) {
 }
 export function exportReadingList(storage) {
   const state = load(storage);
-  return JSON.stringify({ format: 'murmur-reading-list', version: 1, follows: state.follows, seen: state.seen ?? {} }, null, 2);
+  return JSON.stringify({ format: 'murmur-reading-list', version: 1, follows: state.follows, seen: state.seen ?? {},
+    ...(state.muted?.length ? { muted: state.muted } : {}) }, null, 2);
 }
 export function decodeReadingList(text) {
   if (typeof text !== 'string' || text.length > READING_LIST_LIMIT) throw new Error('Reading list file is too large.');
   let value;
   try { value = JSON.parse(text); }
   catch { throw new Error('Reading list file is not valid JSON.'); }
-  if (!fields(value, ['format', 'version', 'follows', 'seen']) || value.format !== 'murmur-reading-list') {
+  const names = ['format', 'version', 'follows', 'seen'];
+  if (value && Object.hasOwn(value, 'muted')) names.push('muted');
+  if (!fields(value, names) || value.format !== 'murmur-reading-list') {
     throw new Error('This is not a Murmur reading list. Identity backups use a different format.');
   }
-  return validate({ version: value.version, follows: value.follows, seen: value.seen });
+  return validate({ version: value.version, follows: value.follows, seen: value.seen,
+    ...(Object.hasOwn(value, 'muted') ? { muted: value.muted } : {}) });
 }
 export function importReadingList(storage, text) {
   const incoming = decodeReadingList(text), state = load(storage);
@@ -139,5 +149,14 @@ export function importReadingList(storage, text) {
   for (const [key, index] of Object.entries(incoming.seen)) {
     state.seen[key] = Math.max(state.seen[key] ?? 0, index);
   }
+  state.muted = [...new Set([...(state.muted ?? []), ...(incoming.muted ?? [])])];
+  return save(storage, state);
+}
+export const mutedFeeds = storage => load(storage).muted ?? [];
+export function muteFeed(storage, key, muted) {
+  const state = load(storage);
+  if (!state.follows.includes(key)) throw new Error('This feed is no longer followed.');
+  state.muted = (state.muted ?? []).filter(existing => existing !== key);
+  if (muted) state.muted.push(key);
   return save(storage, state);
 }

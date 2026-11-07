@@ -90,6 +90,20 @@ try {
   assert(JSON.stringify([...importedValues]) === original, 'Invalid import changed the reading list.');
   for (let index = 0; index < 48; index++) addFollow(destination, `VLD0:extra-${index}`);
   rejects(() => importReadingList(destination, JSON.stringify({ ...JSON.parse(reading), follows: ['VLD0:overflow'], seen: {} })));
+  const { muteFeed, mutedFeeds } = await import('./feeds.mjs');
+  muteFeed(storage, 'VLD0:second', true);
+  assert(timeline(storage).length === 0 && cachedFeeds(storage).length === 1, 'Mute deleted cache or kept posts in Home.');
+  assert(loadFollows(storage).length === 1, 'Mute unfollowed the feed.');
+  markRead(storage);
+  const mutedReading = exportReadingList(storage);
+  importReadingList(destination, mutedReading);
+  assert(mutedFeeds(destination).includes('VLD0:second'), 'Reading import lost muted feeds.');
+  muteFeed(storage, 'VLD0:second', false);
+  assert(timeline(storage).filter(entry => entry.unread).length === 1, 'Muted hidden posts were silently marked read.');
+  rejects(() => muteFeed(storage, 'VLD0:missing', true));
+  muteFeed(storage, 'VLD0:second', true);
+  removeFollow(storage, 'VLD0:second');
+  assert(mutedFeeds(storage).length === 0, 'Unfollow left an orphaned mute.');
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.message}`;

@@ -180,6 +180,15 @@ try {
   element('reading-form').requestSubmit();
   await wait(() => element('follow-list').textContent.includes('VLD0:imported'));
   assert(element('follow-list').textContent.includes('VLD0:remote'), 'Import replaced the existing list.');
+  const remoteItem = () => Array.from(element('follow-list').querySelectorAll('li')).find(item => item.textContent.includes('VLD0:remote'));
+  remoteItem().querySelector('[data-action="mute"]').click();
+  await wait(() => !element('timeline').textContent.includes('guest-readable'));
+  assert(remoteItem().textContent.includes('Unmute'), 'Muted follow disappeared instead of offering unmute.');
+  element('key').value = 'VLD0:remote';
+  element('read').click();
+  await wait(() => element('feed-cards').textContent.includes('guest-readable'));
+  remoteItem().querySelector('[data-action="mute"]').click();
+  await wait(() => element('timeline').textContent.includes('guest-readable'));
   Array.from(element('follow-list').querySelectorAll('li')).find(item => item.textContent.includes('VLD0:remote'))
     .querySelector('button:last-child').click();
   await wait(() => !element('follow-list').textContent.includes('VLD0:remote'));
