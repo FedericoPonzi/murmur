@@ -28,8 +28,8 @@ After building the bindings above, install Genereto as described in the
 [developer guide](dev-guide.md#website-preview), then:
 
 ```sh
-node website/build.mjs --with-app
-node website/serve.mjs
+python3 website/build.py --with-app
+python3 website/serve.py
 ```
 
 Open `http://localhost:8000/app/`. The landing page and hosted docs are on the
@@ -77,17 +77,19 @@ the browser lock lasts until shutdown or worker termination.
 ## Checks
 
 ```sh
-node --test browser/worker.test.mjs
+python3 browser/check.py
 cargo clippy -p murmur-browser --target wasm32-unknown-unknown --release --locked -- -D warnings
 ```
 
-`browser/smoke.cjs` is an opt-in Chromium check using Playwright, not a required
-network CI gate. Install Playwright in an external temporary directory and set
-`NODE_PATH` to its `node_modules`. Run `node browser/smoke.cjs --storage-only`
+The worker checks need Chrome/Chromium; set `CHROME` if it is not on `PATH`.
+`browser/smoke.py` is an opt-in Chromium check using Selenium Python, not a required
+network CI gate. Install `selenium` in a temporary Python virtual environment.
+Run `python3 browser/smoke.py --storage-only`
 to check worker startup and IndexedDB reload without asserting attachment.
 For full cross-reads, run the native server with disposable storage, publish
 a test post through its CLI, and set `MURMUR_BRIDGE_URL` to that server before
-running `node browser/smoke.cjs`. Each run preserves its log/screenshot in a
+running `python3 browser/smoke.py`. Each run preserves its log/screenshot in a
 separate temporary artifacts directory; test browser credentials are discarded.
 Set `MURMUR_PREVIEW_URL=http://localhost:8000/app/` to exercise the combined
 preview instead of the standalone page. The preview server must already run.
+Selenium manages ChromeDriver, or use `CHROMEDRIVER` for an existing executable.

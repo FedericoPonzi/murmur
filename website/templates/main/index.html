@@ -4,29 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>$GENERETO['title'] | Murmur</title>
-  <style>
-    :root { color-scheme: light dark; font: 17px/1.6 system-ui, sans-serif; --link: #165aa8; }
-    @media (prefers-color-scheme: dark) { :root { --link: #91c2ff; } }
-    body { max-width: 72rem; margin: auto; padding: 0 1.25rem; }
-    a { color: var(--link); text-underline-offset: .2em; }
-    a:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
-    header, footer { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: 1.25rem 0; }
-    header { border-bottom: 1px solid #8886; justify-content: space-between; }
-    nav { display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
-    nav a, footer a { padding: .25rem 0; }
-    .brand { font-size: 1.5rem; font-weight: 700; text-decoration: none; }
-    main { max-width: 48rem; min-height: 60vh; padding: 2rem 0; overflow-wrap: anywhere; }
-    h1, h2, h3 { line-height: 1.25; }
-    h1 { font-size: clamp(2rem, 6vw, 3rem); }
-    h2 { margin-top: 2rem; }
-    pre { padding: 1rem; overflow-x: auto; background: #8882; border-radius: .3rem; }
-    code { font-size: .9em; }
-    table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
-    th, td { padding: .5rem .75rem; border-bottom: 1px solid #8886; text-align: left; }
-    footer { border-top: 1px solid #8886; font-size: .9rem; }
-    .skip { position: absolute; left: -10000px; }
-    .skip:focus { position: static; }
-  </style>
+  <link rel="stylesheet" href="$GENERETO['root']/style.css">
 </head>
 <body>
   <a class="skip" href="#content">Skip to content</a>

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Murmur worker checks</title>
+<output id="result">running</output>
+<script type="module">
+import { checkEnvironment } from './worker.mjs';
+const environment = {
+  location: { protocol: 'http:' }, indexedDB: {},
+  navigator: { locks: { request() {} } },
+};
+const rejects = (scope, bootstrap, expected) => {
+  try { checkEnvironment(scope, bootstrap); }
+  catch (failure) {
+    if (expected.test(failure.message)) return;
+    throw failure;
+  }
+  throw new Error('Expected an explicit failure.');
+};
+try {
+  const bootstrap = 'ws://bootstrap-v1.veilid.net:5150/ws';
+  if (checkEnvironment(environment, bootstrap) !== bootstrap) throw new Error('Bootstrap changed.');
+  rejects({ ...environment, indexedDB: undefined }, bootstrap, /IndexedDB/);
+  rejects({ ...environment, navigator: {} }, bootstrap, /Web Locks/);
+  rejects({ ...environment, location: { protocol: 'https:' } }, bootstrap, /HTTP/);
+  for (const value of ['https://example.org/ws', 'wss://example.org/ws', 'invalid', 'ws://user:secret@example.org/ws', 'ws://example.org/ws#fragment']) {
+    rejects(environment, value, /bootstrap/i);
+  }
+  document.getElementById('result').textContent = 'passed';
+} catch (failure) {
+  document.getElementById('result').textContent = `failed: ${failure.message}`;
+}
+</script>
+</html>

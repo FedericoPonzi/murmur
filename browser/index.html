@@ -1,18 +1,15 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Murmur browser probe</title>
-<style>
-body { font: 16px system-ui; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
-label { display: block; margin-top: 1rem; }
-input, textarea { box-sizing: border-box; width: 100%; padding: .5rem; }
-button { margin: .5rem .5rem .5rem 0; padding: .5rem; }
-pre, output { white-space: pre-wrap; overflow-wrap: anywhere; }
-header, nav { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
-header { justify-content: space-between; padding-bottom: 1rem; border-bottom: 1px solid #8886; }
-</style>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<a class="skip" href="#main-content">Skip to content</a>
 <!-- site_header -->
+<main id="main-content">
 <h1>Murmur browser probe</h1>
 <p>Developer-only feasibility test. Use disposable data: browser storage is
 not yet a passphrase-protected identity vault. This probe publishes one immutable
@@ -28,6 +25,7 @@ test post, not a full feed editor. Stopping or closing the tab stops its node.</
 <label for="key">RecordKey to read (browser or native)</label>
 <input id="key"><button id="read" disabled>Read feed</button>
 <pre id="feed"></pre>
+</main>
 <script type="module">
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, busy = false, generation = 0;
@@ -122,4 +120,5 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
   };
 }
 </script>
+</body>
 </html>

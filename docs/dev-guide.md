@@ -55,14 +55,14 @@ different startup and DHT method signatures.
 
 ## Website preview
 
-Install Node.js (18+) and [Genereto](https://github.com/FedericoPonzi/genereto)
+Use Python 3.10+ and [Genereto](https://github.com/FedericoPonzi/genereto)
 0.4.4 as build tools. From the repository root:
 
 ```sh
 cargo install --git https://github.com/FedericoPonzi/genereto --rev 9a21250e4dcfb93bc7b03cb003619e621ae0b6c4 --locked
-node website/build.mjs
-node --test website/*.test.mjs
-python3 -m http.server 8000 --bind 127.0.0.1 --directory website/output
+python3 website/build.py
+python3 -m unittest discover -s website -p 'test_*.py'
+python3 website/serve.py
 ```
 
 Open `http://localhost:8000`. The build uses one template and renders this
@@ -75,8 +75,8 @@ To include the interactive probe, first build its WASM bindings following the
 [browser guide](browser-probe.md), then:
 
 ```sh
-node website/build.mjs --with-app
-node website/serve.mjs
+python3 website/build.py --with-app
+python3 website/serve.py
 ```
 
 Open `/app/` on the same local origin. The server binds only to `127.0.0.1`,

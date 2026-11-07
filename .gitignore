@@ -1,6 +1,7 @@
 /target/
 /browser/pkg/
 /website/output/
+__pycache__/
 /murmur-data/
 murmur_config.json
 pending-post.json
