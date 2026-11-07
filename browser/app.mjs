@@ -1,10 +1,11 @@
-import { loadFollows, addFollow, removeFollow, resetFollows, saveFeed, cachedFeeds, timeline } from './feeds.mjs';
+import { loadFollows, addFollow, removeFollow, resetFollows, saveFeed, cachedFeeds, timeline, markRead, feedLink, sharedFeed } from './feeds.mjs';
 
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
 let active = false, attached = false, busy = false, authenticating = true, mode = 'create';
 let publicIdentity, draftTimer, draftVersion = 0, guest = false;
 let refreshTask;
+let pendingFeed, unreadCount = 0;
 const feedProgress = new Map();
 const requests = new Map();
 const clearPassphrases = () => {
@@ -54,6 +55,9 @@ const showFeed = result => {
 };
 const controls = () => {
   $('follow').disabled = !active || busy;
+  $('share-feed').disabled = !active || busy;
+  $('share-own').disabled = !active || guest || busy;
+  $('mark-read').disabled = !active || busy || !unreadCount;
   $('refresh-timeline').disabled = !active || !attached || busy || !$('follow-list').children.length;
   $('cancel-timeline').disabled = !refreshTask || refreshTask.cancelled;
   for (const button of $('timeline').querySelectorAll('button')) button.disabled = !active || !attached || busy;
@@ -113,8 +117,15 @@ const renderFollows = follows => {
 const renderTimeline = () => {
   const snapshots = new Map(cachedFeeds(localStorage).map(entry => [entry.key, entry]));
   const entries = timeline(localStorage);
+  unreadCount = entries.filter(entry => entry.unread).length;
+  $('unread-count').textContent = `${unreadCount} unread cached posts`;
   $('timeline').replaceChildren(...entries.map(entry => {
     const article = postCard(entry.post, entry.metadata.author_name);
+    if (entry.unread) {
+      const badge = document.createElement('small');
+      badge.textContent = 'Unread';
+      article.prepend(badge);
+    }
     const read = document.createElement('button');
     read.type = 'button';
     read.className = 'quiet-button';
@@ -136,6 +147,8 @@ const renderTimeline = () => {
   }));
 };
 const loadFollowView = () => {
+  unreadCount = 0;
+  $('unread-count').textContent = '0 unread cached posts';
   $('follow-list').replaceChildren();
   $('timeline').replaceChildren();
   $('feed-status').replaceChildren();
@@ -147,6 +160,28 @@ const loadFollowView = () => {
     $('reset-follows').hidden = false;
   }
 };
+$('mark-read').onclick = () => {
+  if (!active || busy) return;
+  try {
+    markRead(localStorage);
+    renderTimeline();
+    controls();
+    $('follow-status').textContent = 'Cached posts marked as read.';
+  } catch (failure) { $('follow-status').textContent = `Could not save read state: ${failure.message}`; }
+};
+const copyFeedLink = async key => {
+  const run = generation;
+  try {
+    const canonical = await call('check_key', key);
+    if (run !== generation) return;
+    await navigator.clipboard.writeText(feedLink(new URL('./index.html', import.meta.url), canonical));
+    if (run === generation) $('status').textContent = 'Feed link copied. Anyone with it can read this feed.';
+  } catch (failure) {
+    if (run === generation) $('status').textContent = `Could not copy feed link: ${failure.message}`;
+  }
+};
+$('share-feed').onclick = () => copyFeedLink($('key').value);
+$('share-own').onclick = () => copyFeedLink($('own-key').textContent);
 $('follow').onclick = async () => {
   if (!active || busy) return;
   const run = generation;
@@ -239,6 +274,9 @@ const finish = message => {
   if (refreshTask) refreshTask.cancelled = true;
   refreshTask = undefined;
   feedProgress.clear();
+  pendingFeed = undefined;
+  unreadCount = 0;
+  $('unread-count').textContent = '0 unread cached posts';
   worker?.terminate();
   worker = undefined;
   for (const request of requests.values()) {
@@ -322,6 +360,11 @@ const watchAttachment = run => {
           : identity.probe_post
           ? 'Connected. A publication needs confirmation; retry only its saved text.'
           : 'Connected to Veilid. Ready to publish and read.';
+        if (guest && pendingFeed) {
+          $('key').value = pendingFeed;
+          pendingFeed = undefined;
+          $('read').click();
+        }
       } else if (!state.ready) {
         if (attached) {
           attached = false;
@@ -630,4 +673,12 @@ try {
   showMode(exists ? 'unlock' : 'create');
   controls();
   $('status').textContent = exists ? 'Your identity is locked.' : 'Create a local identity to get started.';
+  try {
+    const requested = sharedFeed(location.href);
+    if (requested !== null) {
+      pendingFeed = await call('check_key', requested, 30000);
+      $('key').value = pendingFeed;
+      $('browse-start').click();
+    }
+  } catch (failure) { $('status').textContent = `Invalid shared feed link: ${failure.message}`; }
 } catch (failure) { finish(`Local storage unavailable: ${failure.message}`); }

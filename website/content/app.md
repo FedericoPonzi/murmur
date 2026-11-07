@@ -20,3 +20,6 @@ without changing your RecordKey and revisit locally saved posts.
 The [native read-only bridge](../docs/quick-start.html) remains available
 separately. Save up to 50 follows and refresh their combined recent-post timeline.
 Cached reads remain visible offline, with a timestamp and separate per-feed errors.
+Copy a feed link to let someone open a read-only session directly. Unread badges
+track cached posts; mark them read explicitly. Follows, public cache, and read
+markers are local to this browser and are not part of identity backups.

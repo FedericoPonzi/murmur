@@ -11,6 +11,7 @@ function installWorker() {
   localStorage.setItem('murmur-follows-v1', JSON.stringify({ version: 1, follows: ['VLD0:existing'] }));
   window.authorStarts = 0;
   window.confirm = () => false;
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText: async value => { window.copiedText = value; } } });
   const identity = { record_key: 'VLD0:disposable', author_name: 'Disposable author', bio: '', probe_post: null,
     draft: '', history: [{ index: 0, timestamp: 1, content: 'Existing <b>literal</b> post' }] };
   window.Worker = class {
@@ -161,6 +162,12 @@ try {
   element('refresh-timeline').click();
   await wait(() => !element('refresh-timeline').disabled);
   assert(element('timeline').querySelectorAll('article').length === 1, 'Refresh duplicated cached posts.');
+  assert(element('unread-count')?.textContent.includes('1 unread'), 'Unread posts were not counted.');
+  element('mark-read').click();
+  assert(element('unread-count').textContent.includes('0 unread'), 'Explicit read marker did not clear the badge.');
+  element('share-feed').click();
+  await wait(() => frame.contentWindow.copiedText);
+  assert(new URL(frame.contentWindow.copiedText).searchParams.get('feed') === 'VLD0:remote', 'Copied link points to a different feed.');
   Array.from(element('follow-list').querySelectorAll('li')).find(item => item.textContent.includes('VLD0:remote'))
     .querySelector('button:last-child').click();
   await wait(() => !element('follow-list').textContent.includes('VLD0:remote'));

@@ -126,6 +126,11 @@ pub async fn start_reader_node(bootstrap: String) -> Result<BrowserNode> {
 }
 
 #[wasm_bindgen]
+pub fn check_feed_key(value: String) -> Result<String> {
+    feed_key(&value).map(|key| key.to_string())
+}
+
+#[wasm_bindgen]
 pub async fn start_protected_node(bootstrap: String, passphrase: String) -> Result<BrowserNode> {
     start_protected(bootstrap, Zeroizing::new(passphrase)).await
 }

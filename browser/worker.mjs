@@ -40,7 +40,12 @@ if (typeof self !== 'undefined') {
           if (typeof indexedDB.databases !== 'function') throw new Error('This browser cannot inspect local identity storage.');
           return (await indexedDB.databases()).some(database => database.name.includes('murmur-browser-identity'));
         };
-        if (data.action === 'has_storage') {
+        if (data.action === 'check_key' && !node) {
+          if (typeof data.value !== 'string') throw new Error('Feed key must be text.');
+          const wasm = await import('./pkg/murmur_browser.js');
+          await wasm.default();
+          send(data.id, wasm.check_feed_key(data.value));
+        } else if (data.action === 'has_storage') {
           checkEnvironment(self, data.bootstrap);
           send(data.id, await hasStorage());
         } else if (['start', 'start_protected', 'read_only'].includes(data.action) || authenticating) {

@@ -13,6 +13,8 @@ try {
   const author = await node.call('create', credentials);
   await node.call('stop');
   const saved = await storage_snapshot('murmur-browser-identity');
+  assert(await node.call('check_key', author.identity.record_key) === author.identity.record_key, 'Locked feed validation failed.');
+  assert(await storage_snapshot('murmur-browser-identity') === saved, 'Key validation opened author storage.');
   const state = await node.call('read_only');
   assert(state.reader === true && !state.protected && state.identity === null, 'Guest loaded an author.');
   assert(await node.call('profile') === null, 'An author escaped into guest mode.');

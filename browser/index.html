@@ -90,6 +90,7 @@
 <label for="own-key">Your public RecordKey</label>
 <output id="own-key"></output>
 <button id="copy-key" class="quiet-button" disabled>Copy RecordKey</button>
+<button id="share-own" class="quiet-button" disabled>Copy your feed link</button>
 <details id="profile-settings">
 <summary>Edit public profile</summary>
 <form id="profile-form">
@@ -152,6 +153,7 @@
 <input id="key" spellcheck="false">
 <button id="read" disabled>Read feed</button>
 <button id="follow" class="quiet-button" disabled>Follow this feed</button>
+<button id="share-feed" class="quiet-button" disabled>Copy feed link</button>
 <section aria-labelledby="following-heading">
 <h2 id="following-heading">Following</h2>
 <p class="preview-notice">Up to 50 feeds, saved on this browser. This list is not passphrase-protected or included in identity backups.</p>
@@ -161,6 +163,8 @@
 </section>
 <section aria-labelledby="timeline-heading">
 <h2 id="timeline-heading">Your timeline</h2>
+<output id="unread-count" aria-live="polite">0 unread cached posts</output>
+<button id="mark-read" class="quiet-button" disabled>Mark cached posts as read</button>
 <p class="preview-notice">Recent posts from followed feeds, sorted by reported time. Authors' clocks can differ. Cached snapshots are not guaranteed current or permanently retained.</p>
 <button id="refresh-timeline" disabled>Refresh followed feeds</button>
 <button id="cancel-timeline" class="quiet-button" disabled>Stop refresh</button>

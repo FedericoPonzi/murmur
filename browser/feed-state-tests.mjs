@@ -58,6 +58,19 @@ try {
   quota = false;
   removeFollow(storage, 'VLD0:first');
   assert(timeline(storage).length === 1, 'Unfollow left old posts in the timeline.');
+  const { markRead, feedLink, sharedFeed } = await import('./feeds.mjs');
+  assert(timeline(storage)[0].unread, 'A new cached post was already marked read.');
+  markRead(storage);
+  assert(!timeline(storage)[0].unread, 'Read state was not saved.');
+  saveFeed(storage, 'VLD0:second', feed('VLD0:second', [20, 30]), 104);
+  assert(timeline(storage).filter(entry => entry.unread).length === 1, 'New posts did not preserve the previous read marker.');
+  rejects(() => saveFeed(storage, 'VLD0:second', feed('VLD0:second', [20]), 105));
+  assert(timeline(storage).length === 2, 'An older snapshot erased newer cached posts.');
+  const link = feedLink('http://localhost:8000/base/app/index.html?secret=do-not-share#profile', 'VLD0:second');
+  assert(sharedFeed(link) === 'VLD0:second' && !link.includes('secret') && !link.includes('#'), 'Feed link leaked unrelated URL data.');
+  assert(new URL(link).pathname === '/base/app/index.html', 'Feed link lost the hosted base path.');
+  rejects(() => sharedFeed('http://localhost/?feed=one&feed=two'));
+  rejects(() => sharedFeed('http://localhost/?feed='));
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.message}`;

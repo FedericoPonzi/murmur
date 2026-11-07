@@ -41,6 +41,15 @@ other results. **Stop refresh** stops after the current bounded read completes.
 Cached public snapshots retain at most 20 posts per followed feed. They remain
 visible offline but may be stale. Ordering uses authors' reported times, so
 different clocks can put posts out of real-world order.
+**Copy feed link** shares the entered feed; **Copy your feed link** shares your
+own. Opening a link starts only the read-only reader, even if an author is saved
+on that browser. It never unlocks the author. A complete feed link lets its
+recipient read that feed; share only what you intend to make public.
+Unread badges count cached posts, not all posts on the network. **Mark cached
+posts as read** saves your place; later logical post indices appear unread.
+Read markers, follows, and public cache stay on this browser and are not
+included in encrypted identity backups. Older remote snapshots do not replace
+newer cached reads.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.
