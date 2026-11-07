@@ -9,6 +9,7 @@ use veilid_core::{
     VeilidConfig, VeilidConfigProtectedStoreBackend, CRYPTO_KIND_VLD0,
 };
 use wasm_bindgen::prelude::*;
+use zeroize::Zeroizing;
 
 type Result<T> = std::result::Result<T, JsValue>;
 
@@ -84,13 +85,35 @@ pub struct BrowserNode {
     table: TableDB,
     identity: Option<TestIdentity>,
     starts: u64,
+    protected: bool,
 }
 
 #[wasm_bindgen]
 pub async fn start_node(bootstrap: String) -> Result<BrowserNode> {
-    let mut config = VeilidConfig::new("murmur-browser-probe", "murmur", "org", None, None);
-    config.namespace = "murmur-browser-probe".into();
+    start(bootstrap, None).await
+}
+
+#[wasm_bindgen]
+pub async fn start_protected_node(bootstrap: String, passphrase: String) -> Result<BrowserNode> {
+    let passphrase = Zeroizing::new(passphrase);
+    murmur_core::vault::validate_passphrase(&passphrase)
+        .map_err(|failure| error(&failure.to_string()))?;
+    start(bootstrap, Some(passphrase)).await
+}
+
+async fn start(bootstrap: String, passphrase: Option<Zeroizing<String>>) -> Result<BrowserNode> {
+    let protected = passphrase.is_some();
+    let namespace = if protected {
+        "murmur-browser-identity"
+    } else {
+        "murmur-browser-probe"
+    };
+    let mut config = VeilidConfig::new(namespace, "murmur", "org", None, None);
+    config.namespace = namespace.into();
     config.protected_store.backend = VeilidConfigProtectedStoreBackend::IndexedDb;
+    if let Some(passphrase) = passphrase {
+        config.protected_store.device_encryption_key_password = passphrase.to_string();
+    }
     config.table_store.wipe_on_invalid_device_encryption_key = false;
     config.network.protocol.ws.connect = true;
     config.network.protocol.ws.listen = false;
@@ -131,6 +154,7 @@ pub async fn start_node(bootstrap: String) -> Result<BrowserNode> {
             table,
             identity,
             starts,
+            protected,
         }),
         Err(failure) => {
             api.shutdown().await;
@@ -146,6 +170,7 @@ impl BrowserNode {
         String::from_utf8(encode(&serde_json::json!({
             "starts": self.starts,
             "ready": state.attachment.public_internet_ready,
+            "protected": self.protected,
         }))?)
         .map_err(|_| error("JSON encoding failed"))
     }
@@ -172,23 +197,7 @@ impl BrowserNode {
                 return Err(error("Stored writer does not own the test record"));
             }
         } else {
-            let descriptor = self
-                .context
-                .create_dht_record(
-                    CRYPTO_KIND_VLD0,
-                    DHTSchema::smpl(OWNER_SUBKEYS, vec![]).map_err(api_error)?,
-                    None,
-                )
-                .await
-                .map_err(api_error)?;
-            self.identity = Some(TestIdentity {
-                key: descriptor.key(),
-                writer: descriptor
-                    .owner_keypair()
-                    .ok_or_else(|| error("Created record has no writer"))?,
-                post: None,
-            });
-            self.save_identity().await?;
+            self.create_identity().await?;
         }
         let identity = self
             .identity
@@ -272,9 +281,129 @@ impl BrowserNode {
     pub async fn shutdown(self) {
         self.api.shutdown().await;
     }
+
+    #[cfg(feature = "vault-tests")]
+    pub async fn test_seed_identity(&mut self) -> Result<String> {
+        if !self.protected || self.identity.is_some() {
+            return Err(error("Checks require a new protected identity"));
+        }
+        self.create_identity().await?;
+        let identity = self
+            .identity
+            .as_mut()
+            .ok_or_else(|| error("No test identity"))?;
+        identity.post = Some(Post {
+            index: 0,
+            timestamp: 1,
+            content: "disposable protected pending post".into(),
+        });
+        let key = identity.key.to_string();
+        self.save_identity().await?;
+        Ok(key)
+    }
+
+    #[cfg(feature = "vault-tests")]
+    pub async fn test_storage(&self, snapshot: String) -> Result<String> {
+        use data_encoding::BASE64URL_NOPAD;
+        #[derive(Deserialize)]
+        struct Row {
+            key: Vec<u8>,
+            value: Vec<u8>,
+        }
+        if !self.protected {
+            return Err(error("Storage checks require a protected node"));
+        }
+        let identity = self
+            .identity
+            .as_ref()
+            .ok_or_else(|| error("No test identity"))?;
+        self.api
+            .crypto()
+            .map_err(api_error)?
+            .check_keypair(&identity.writer)
+            .map_err(api_error)?;
+        let saved = self
+            .table
+            .load(0, b"identity".to_vec().into())
+            .await
+            .map_err(api_error)?
+            .ok_or_else(|| error("Identity was not persisted"))?;
+        let restored: TestIdentity = decode(&saved)?;
+        if restored.key != identity.key
+            || restored.writer != identity.writer
+            || restored.post != identity.post
+            || identity.post.as_ref().map(|post| post.content.as_str())
+                != Some("disposable protected pending post")
+        {
+            return Err(error("Persisted writer or pending post mismatch"));
+        }
+        let secret = Zeroizing::new(identity.writer.secret().ref_value().to_string());
+        let secret_bytes = Zeroizing::new(
+            BASE64URL_NOPAD
+                .decode(secret.as_bytes())
+                .map_err(|_| error("Invalid signing secret encoding"))?,
+        );
+        let rows: Vec<Row> = decode(snapshot.as_bytes())?;
+        let device_key = rows
+            .iter()
+            .find(|row| row.key == b"device_encryption_key")
+            .ok_or_else(|| error("Device key was not persisted"))?;
+        let encoded = std::str::from_utf8(&device_key.value)
+            .map_err(|_| error("Invalid device key encoding"))?;
+        let encrypted = BASE64URL_NOPAD
+            .decode(
+                encoded
+                    .strip_suffix('!')
+                    .ok_or_else(|| error("Invalid device key encoding"))?
+                    .as_bytes(),
+            )
+            .map_err(|_| error("Invalid device key encoding"))?;
+        if encrypted.len() != 76 || !encrypted.starts_with(b"VLD0") {
+            return Err(error("Device key is not password protected"));
+        }
+        let forbidden = [
+            secret.as_bytes(),
+            secret_bytes.as_slice(),
+            b"disposable protected storage passphrase",
+            b"disposable protected pending post",
+        ];
+        for row in rows {
+            for bytes in [&row.key, &row.value] {
+                if forbidden
+                    .iter()
+                    .any(|needle| bytes.windows(needle.len()).any(|value| value == *needle))
+                {
+                    return Err(error(
+                        "Plaintext credentials or pending post found in storage",
+                    ));
+                }
+            }
+        }
+        Ok(identity.key.to_string())
+    }
 }
 
 impl BrowserNode {
+    async fn create_identity(&mut self) -> Result<()> {
+        let descriptor = self
+            .context
+            .create_dht_record(
+                CRYPTO_KIND_VLD0,
+                DHTSchema::smpl(OWNER_SUBKEYS, vec![]).map_err(api_error)?,
+                None,
+            )
+            .await
+            .map_err(api_error)?;
+        self.identity = Some(TestIdentity {
+            key: descriptor.key(),
+            writer: descriptor
+                .owner_keypair()
+                .ok_or_else(|| error("Created record has no writer"))?,
+            post: None,
+        });
+        self.save_identity().await
+    }
+
     async fn save_identity(&self) -> Result<()> {
         let identity = self
             .identity

@@ -1616,6 +1616,7 @@ dependencies = [
 name = "murmur-browser"
 version = "0.1.0"
 dependencies = [
+ "data-encoding",
  "murmur-core",
  "murmur-model",
  "serde",
@@ -1623,6 +1624,7 @@ dependencies = [
  "veilid-core",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "zeroize",
 ]
 
 [[package]]

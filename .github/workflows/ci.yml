@@ -60,15 +60,16 @@ jobs:
       - name: Install Rust WASM tools
         run: rustup toolchain install stable --profile minimal --component clippy --target wasm32-unknown-unknown --no-self-update
       - name: Check WASM code
-        run: cargo clippy -p murmur-browser --target wasm32-unknown-unknown --release --locked -- -D warnings
+        run: cargo clippy -p murmur-browser --target wasm32-unknown-unknown --release --locked --all-features -- -D warnings
       - name: Build WASM
         run: cargo build -p murmur-browser --target wasm32-unknown-unknown --release --locked
       - name: Install WASM bindings tool
         run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
-      - name: Check credential format in browser
+      - name: Check credential format and protected storage in browser
         run: |
           cargo build -p murmur-browser --target wasm32-unknown-unknown --release --locked --features vault-tests
           mkdir -p "$RUNNER_TEMP/murmur-vault-tests"
           wasm-bindgen --target web --out-dir "$RUNNER_TEMP/murmur-vault-tests/pkg" target/wasm32-unknown-unknown/release/murmur_browser.wasm
-          cp browser/vault-tests.html "$RUNNER_TEMP/murmur-vault-tests/"
+          cp browser/vault-tests.html browser/worker.mjs browser/storage-tests.html browser/storage-tests.mjs browser/storage-snapshot.mjs "$RUNNER_TEMP/murmur-vault-tests/"
           python3 browser/check.py --root "$RUNNER_TEMP/murmur-vault-tests" --page vault-tests.html
+          python3 browser/check.py --root "$RUNNER_TEMP/murmur-vault-tests" --page storage-tests.html

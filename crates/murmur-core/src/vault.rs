@@ -76,7 +76,7 @@ struct Envelope {
     ciphertext: Vec<u8>,
 }
 
-fn validate_passphrase(passphrase: &str) -> Result<(), Error> {
+pub fn validate_passphrase(passphrase: &str) -> Result<(), Error> {
     if passphrase.is_empty() || passphrase.len() > 1024 {
         return Err(Error::InvalidPassphrase);
     }
