@@ -135,3 +135,34 @@ main:has(.landing) { max-width: none; padding: 0; }
   html { scroll-behavior: auto; }
   .button { transition: none; }
 }
+[hidden] { display: none !important; }
+.app-shell { max-width: none; }
+.auth-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 5rem; align-items: start; padding: 2rem 0; }
+.auth-intro { padding-top: 2rem; }
+.auth-intro h1 { font-size: clamp(2.4rem, 4vw, 3.6rem); color: var(--text); letter-spacing: -.05em; }
+.auth-intro h1 span { color: var(--violet); }
+.auth-intro > p:not(.eyebrow) { color: var(--muted); }
+.app-panel { min-width: 0; padding: 2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 1.25rem; box-shadow: 0 16px 45px -30px #6356b34d; }
+.app-panel h2 { margin: 0; font-size: 1.65rem; }
+.app-panel fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.app-panel small, .optional { color: var(--muted); font-size: .78rem; font-weight: 400; }
+.app-panel #bio { min-height: 5rem; }
+.app-warning { margin-top: 2rem; padding: 1rem 1.25rem; font-size: .85rem; background: #ecebff; border: 1px solid #ded9fb; border-radius: .85rem; }
+.check-line { display: flex; align-items: start; gap: .7rem; font-size: .8rem; font-weight: 400; }
+.check-line input { flex: 0 0 auto; width: 1rem; height: 1rem; margin-top: .2rem; accent-color: var(--violet); }
+.quiet-button { background: #edf0fc; color: var(--blue); font-size: .85rem; }
+.session-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 1.5rem; align-items: start; }
+.profile-panel h1 { font-size: 1.6rem; }
+.profile-panel output { display: block; padding: .8rem; margin-top: .6rem; background: var(--background); border-radius: .6rem; }
+.connection-settings { margin-top: 1.5rem; padding-bottom: 2rem; color: var(--muted); font-size: .85rem; }
+.connection-settings summary { cursor: pointer; }
+@media (max-width: 900px) {
+  .auth-layout { gap: 2rem; }
+  .app-panel { padding: 1.5rem; }
+}
+@media (max-width: 600px) {
+  .auth-layout, .session-layout { grid-template-columns: 1fr; gap: 1.5rem; padding: .5rem 0; }
+  .auth-intro { padding: 0; }
+  .auth-intro h1 { font-size: 2.3rem; }
+  .app-panel { padding: 1.25rem; }
+}

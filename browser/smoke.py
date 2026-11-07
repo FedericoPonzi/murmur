@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 from pathlib import Path
-import re
 import sys
 import tempfile
 import threading
@@ -36,7 +35,7 @@ def check(storage_only=False):
             threading.Thread(target=server.serve_forever, daemon=True).start()
             origin = f"http://127.0.0.1:{server.server_port}/"
         options = webdriver.ChromeOptions()
-        for argument in ("--headless=new", "--no-sandbox", "--disable-dev-shm-usage"):
+        for argument in ("--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--force-prefers-reduced-motion"):
             options.add_argument(argument)
         if os.environ.get("CHROME"):
             options.binary_location = os.environ["CHROME"]
@@ -47,27 +46,55 @@ def check(storage_only=False):
         text = lambda id: element(id).text
 
         def storage(expected):
-            wait.until(lambda _: text("storage") or not re.search("Starting|Attaching|Worker/storage ready", text("status")))
-            if text("storage") != str(expected):
+            wait.until(lambda _: element("storage").get_attribute("textContent") or element("start").is_enabled() or element("unlock-start").is_enabled())
+            if element("storage").get_attribute("textContent") != str(expected):
                 raise AssertionError(text("status"))
 
-        driver.get(origin)
-        if os.environ.get("MURMUR_PREVIEW_URL"):
-            driver.find_element(By.LINK_TEXT, "Docs").click()
-            wait.until(lambda _: driver.find_element(By.TAG_NAME, "h1").text == "Documentation")
-            driver.find_element(By.LINK_TEXT, "Open app").click()
+        def visit():
+            driver.get(origin)
+            if os.environ.get("MURMUR_PREVIEW_URL"):
+                driver.find_element(By.LINK_TEXT, "Docs").click()
+                wait.until(lambda _: driver.find_element(By.TAG_NAME, "h1").text == "Documentation")
+                driver.find_element(By.LINK_TEXT, "Open app").click()
+
+        passphrase = "disposable browser identity passphrase"
+        author = "Disposable <b>author</b>"
+        visit()
+        wait.until(lambda _: element("start").is_enabled())
+        element("author-name").send_keys(author)
+        element("bio").send_keys("A public disposable profile.")
+        element("passphrase").send_keys(passphrase)
+        element("confirm-passphrase").send_keys(passphrase + " mismatch")
+        element("acknowledge").click()
+        element("start").click()
+        wait.until(lambda _: "do not match" in text("status"))
+        element("confirm-passphrase").clear()
+        element("confirm-passphrase").send_keys(passphrase)
         element("start").click()
         storage(1)
+        key = text("own-key")
+        assert key.startswith("VLD0:")
+        assert text("profile-name") == author
+        assert not element("profile-name").find_elements(By.TAG_NAME, "b")
+        assert element("passphrase").get_attribute("value") == ""
+        assert element("confirm-passphrase").get_attribute("value") == ""
+        for width in (390, 320, 1280):
+            driver.set_window_size(width, 900)
+            assert driver.execute_script("return document.documentElement.scrollWidth <= innerWidth")
         if not storage_only:
-            wait.until(lambda _: text("own-key").startswith("VLD0:"))
-            key = text("own-key")
+            wait.until(lambda _: element("publish").is_enabled())
             element("read").click()
             wait.until(lambda _: key in text("feed"))
-            assert json.loads(text("feed"))["posts"] == []
+            initial = json.loads(text("feed"))
+            assert initial["posts"] == []
+            assert initial["metadata"]["author_name"] == author
+            assert initial["metadata"]["bio"] == "A public disposable profile."
             first = driver.current_window_handle
             driver.switch_to.new_window("tab")
-            driver.get(origin)
-            element("start").click()
+            visit()
+            wait.until(lambda _: element("unlock-start").is_enabled())
+            element("unlock-passphrase").send_keys(passphrase)
+            element("unlock-start").click()
             wait.until(lambda _: "Another tab" in text("status"))
             driver.close()
             driver.switch_to.window(first)
@@ -82,14 +109,29 @@ def check(storage_only=False):
             wait.until(lambda _: "Invalid Veilid RecordKey" in text("status"))
             assert text("feed") == ""
         element("stop").click()
-        wait.until(lambda _: text("status") == "Stopped.")
+        wait.until(lambda _: text("status") == "Identity locked.")
+        assert text("own-key") == text("profile-name") == text("feed") == ""
+        assert element("publish").is_enabled() is False
         driver.refresh()
-        element("start").click()
+        wait.until(lambda _: element("unlock-start").is_enabled())
+        assert element("unlock-passphrase").get_attribute("value") == ""
+        assert not element("session").is_displayed()
+        element("unlock-passphrase").send_keys("incorrect passphrase")
+        element("unlock-start").click()
+        wait.until(lambda _: "Unlock failed" in text("status"))
+        assert not element("session").is_displayed()
+        assert element("unlock-passphrase").get_attribute("value") == ""
+        element("unlock-passphrase").send_keys(passphrase)
+        element("unlock-start").click()
         storage(2)
+        assert text("own-key") == key
+        assert text("profile-name") == author
         if storage_only:
-            log("PASS: worker startup and IndexedDB continuity. Network participation not checked.")
+            log("PASS: identity creation, literal profile display, locking, password rejection, and reload/unlock.")
         else:
-            wait.until(lambda _: text("own-key") == key)
+            wait.until(lambda _: element("read").is_enabled())
+            assert element("content").get_attribute("value") == content
+            assert element("content").get_attribute("readonly")
             element("read").click()
             wait.until(lambda _: content in text("feed"))
             bridge = os.environ.get("MURMUR_BRIDGE_URL", "").rstrip("/")
@@ -110,6 +152,7 @@ def check(storage_only=False):
                 with response:
                     status, feed = response.status, json.load(response)
                 if status == 200 and feed.get("posts") and feed["posts"][0]["content"] == content:
+                    assert feed["metadata"]["author_name"] == author
                     break
                 if status not in (200, 404, 502, 503, 504):
                     raise AssertionError(f"Native cross-read failed: HTTP {status}")

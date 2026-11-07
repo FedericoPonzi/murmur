@@ -1,4 +1,5 @@
 import { storage_snapshot, damage_device_key } from './storage-snapshot.mjs';
+import { controller } from './test-worker.mjs';
 
 const passphrase = 'disposable protected storage passphrase';
 const namespace = 'murmur-browser-identity';
@@ -8,45 +9,6 @@ const rejects = async operation => {
   try { await operation(); } catch { rejected = true; }
   assert(rejected, 'Operation unexpectedly succeeded.');
 };
-const controller = () => {
-  const worker = new Worker('./worker.mjs', { type: 'module' });
-  let sequence = 0;
-  const pending = new Map();
-  worker.onmessage = ({ data }) => {
-    const call = pending.get(data.id);
-    if (!call) return;
-    clearTimeout(call.timer);
-    pending.delete(data.id);
-    data.error ? call.reject(new Error(data.error)) : call.resolve(data.result);
-  };
-  worker.onerror = event => {
-    for (const call of pending.values()) {
-      clearTimeout(call.timer);
-      call.reject(new Error(event.message));
-    }
-    pending.clear();
-  };
-  return {
-    async call(action, value) {
-      if (action === 'test_storage') value = await storage_snapshot(namespace);
-      return new Promise((resolve, reject) => {
-        const id = ++sequence;
-        const timer = setTimeout(() => { pending.delete(id); reject(new Error('Storage check timed out.')); }, 20000);
-        pending.set(id, { resolve, reject, timer });
-        worker.postMessage({ id, action, value, bootstrap: 'ws://127.0.0.1:9/ws' });
-      });
-    },
-    terminate() {
-      worker.terminate();
-      for (const call of pending.values()) {
-        clearTimeout(call.timer);
-        call.reject(new Error('Worker terminated.'));
-      }
-      pending.clear();
-    },
-  };
-};
-
 let node;
 try {
   assert((await indexedDB.databases()).length === 0, 'Checks require a disposable browser profile.');

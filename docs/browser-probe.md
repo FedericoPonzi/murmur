@@ -1,4 +1,4 @@
-# Browser feasibility probe
+# Browser preview
 
 This is a developer-only experiment, not the alpha application. Use disposable
 test identities and harmless public text. The native CLI and read-only bridge
@@ -16,10 +16,11 @@ wasm-bindgen --target web --out-dir browser/pkg target/wasm32-unknown-unknown/re
 python3 -m http.server 8000 --bind 127.0.0.1 --directory browser
 ```
 
-Open `http://localhost:8000`. Start the node and wait for **Attached**, not merely
-the worker/storage message. Publish one test post; read another RecordKey, or
-share the test RecordKey with the native bridge. Stop/reload/start and verify
-the same key and post. Retries must use the original text: this probe deliberately
+Open `http://localhost:8000`. Create a profile with a passphrase, then wait for
+**Connected to Veilid** before publishing or reading. Publish one test post; read
+another RecordKey, or share your public RecordKey with the native bridge.
+Lock or reload the page, then unlock with the same passphrase to restore the
+same key and post. Retries must use the original text: this preview deliberately
 does not append posts or implement a second general-purpose publication engine.
 
 ## Combined site and app preview
@@ -67,11 +68,13 @@ disables automatic table deletion on a bad device key. The application table
 holds the writer, RecordKey, and immutable test post before publication.
 Only public status, keys, and feeds cross the worker boundary.
 
-Veilid encrypts its table values, but this probe does **not** password-protect
-the device key held in the protected store. IndexedDB is not a secure vault.
-Do not import real credentials, deploy this as public onboarding, or use it
-for valuable identities. Clearing this origin's browser data removes ownership.
-Device/origin changes do not migrate the identity. One tab may run the probe;
+New browser identities use passphrase-protected device keys and encrypted table
+values. The earlier unpassworded developer namespace is left untouched, not
+imported into the new identity. Reloading starts locked; no passphrase is saved
+by the page. Unlocking still trusts the served application code.
+Do not use this preview for valuable identities: backup and recovery are not
+available. Forgetting the passphrase or clearing browser data loses ownership.
+Device/origin changes do not migrate the identity. One tab may unlock an identity;
 the browser lock lasts until shutdown or worker termination.
 
 ## Checks
@@ -85,7 +88,7 @@ The worker checks need Chrome/Chromium; set `CHROME` if it is not on `PATH`.
 `browser/smoke.py` is an opt-in Chromium check using Selenium Python, not a required
 network CI gate. Install `selenium` in a temporary Python virtual environment.
 Run `python3 browser/smoke.py --storage-only`
-to check worker startup and IndexedDB reload without asserting attachment.
+to check creation, locking, password rejection, and reload/unlock without asserting attachment.
 For full cross-reads, run the native server with disposable storage, publish
 a test post through its CLI, and set `MURMUR_BRIDGE_URL` to that server before
 running `python3 browser/smoke.py`. Each run preserves its log/screenshot in a

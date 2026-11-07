@@ -47,7 +47,7 @@
 </section>
 
 <section class="join-panel" aria-labelledby="join-heading">
-<div><p class="eyebrow">Early days. Open possibilities.</p><h2 id="join-heading">Make room for your voice.</h2><p>Try the local preview with disposable data. Browser identity creation and unlock are still being built.</p></div>
+<div><p class="eyebrow">Early days. Open possibilities.</p><h2 id="join-heading">Make room for your voice.</h2><p>Create a local, passphrase-protected identity and try a first post. Use disposable data while backup and recovery are still being built.</p></div>
 <div class="actions"><a class="button" href="app/index.html">Try Murmur <span aria-hidden="true">&rarr;</span></a><a class="text-link" href="docs/quick-start.html">Get started locally</a></div>
 </section>
 

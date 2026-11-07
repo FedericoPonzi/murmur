@@ -55,6 +55,8 @@ struct TestIdentity {
     writer: KeyPair,
     #[serde(deserialize_with = "Option::deserialize")]
     post: Option<Post>,
+    #[serde(default)]
+    profile: Option<Metadata>,
 }
 
 fn error(message: &str) -> JsValue {
@@ -95,10 +97,68 @@ pub async fn start_node(bootstrap: String) -> Result<BrowserNode> {
 
 #[wasm_bindgen]
 pub async fn start_protected_node(bootstrap: String, passphrase: String) -> Result<BrowserNode> {
-    let passphrase = Zeroizing::new(passphrase);
+    start_protected(bootstrap, Zeroizing::new(passphrase)).await
+}
+
+async fn start_protected(bootstrap: String, passphrase: Zeroizing<String>) -> Result<BrowserNode> {
     murmur_core::vault::validate_passphrase(&passphrase)
         .map_err(|failure| error(&failure.to_string()))?;
     start(bootstrap, Some(passphrase)).await
+}
+
+#[wasm_bindgen]
+pub async fn create_profile_node(
+    bootstrap: String,
+    passphrase: String,
+    author_name: String,
+    bio: String,
+) -> Result<BrowserNode> {
+    let passphrase = Zeroizing::new(passphrase);
+    murmur_model::validate_profile(&author_name, &bio)
+        .map_err(|failure| error(&failure.to_string()))?;
+    start_identity(
+        bootstrap,
+        passphrase,
+        Some(Metadata {
+            author_name,
+            bio,
+            latest_post_index: None,
+        }),
+    )
+    .await
+}
+
+#[wasm_bindgen]
+pub async fn unlock_profile_node(bootstrap: String, passphrase: String) -> Result<BrowserNode> {
+    start_identity(bootstrap, Zeroizing::new(passphrase), None).await
+}
+
+async fn start_identity(
+    bootstrap: String,
+    passphrase: Zeroizing<String>,
+    profile: Option<Metadata>,
+) -> Result<BrowserNode> {
+    let mut node = start_protected(bootstrap, passphrase).await?;
+    let result = if let Some(profile) = profile {
+        if node.identity.is_some() {
+            Err(error("An identity already exists. Unlock it instead."))
+        } else {
+            node.create_identity(Some(profile)).await
+        }
+    } else if node.identity.is_none() {
+        Err(error(
+            "No author identity found. Complete identity creation with the same passphrase.",
+        ))
+    } else {
+        Ok(())
+    };
+    match result {
+        Ok(()) => Ok(node),
+        Err(failure) => {
+            node.shutdown().await;
+            Err(failure)
+        }
+    }
 }
 
 async fn start(bootstrap: String, passphrase: Option<Zeroizing<String>>) -> Result<BrowserNode> {
@@ -130,6 +190,16 @@ async fn start(bootstrap: String, passphrase: Option<Zeroizing<String>>) -> Resu
             .map_err(api_error)?
             .map(|bytes| decode::<TestIdentity>(&bytes))
             .transpose()?;
+        if let Some(identity) = &identity {
+            api.crypto()
+                .map_err(api_error)?
+                .check_keypair(&identity.writer)
+                .map_err(api_error)?;
+            if let Some(profile) = &identity.profile {
+                murmur_model::validate_profile(&profile.author_name, &profile.bio)
+                    .map_err(|failure| error(&failure.to_string()))?;
+            }
+        }
         let starts = table
             .load(0, b"starts".to_vec().into())
             .await
@@ -165,6 +235,19 @@ async fn start(bootstrap: String, passphrase: Option<Zeroizing<String>>) -> Resu
 
 #[wasm_bindgen]
 impl BrowserNode {
+    pub fn local_identity(&self) -> Result<String> {
+        let public = self.identity.as_ref().map(|identity| {
+            let profile = identity.profile.as_ref();
+            serde_json::json!({
+                "record_key": identity.key.to_string(),
+                "author_name": profile.map_or("Murmur browser test", |profile| profile.author_name.as_str()),
+                "bio": profile.map_or("", |profile| profile.bio.as_str()),
+                "probe_post": identity.post,
+            })
+        });
+        String::from_utf8(encode(&public)?).map_err(|_| error("JSON encoding failed"))
+    }
+
     pub async fn status(&self) -> Result<String> {
         let state = self.api.get_state().await.map_err(api_error)?;
         String::from_utf8(encode(&serde_json::json!({
@@ -176,16 +259,7 @@ impl BrowserNode {
     }
 
     pub async fn identity_key(&mut self) -> Result<String> {
-        if !self
-            .api
-            .get_state()
-            .await
-            .map_err(api_error)?
-            .attachment
-            .public_internet_ready
-        {
-            return Err(error("Veilid is not attached"));
-        }
+        self.require_ready().await?;
         if let Some(identity) = &self.identity {
             let descriptor = self
                 .context
@@ -196,8 +270,10 @@ impl BrowserNode {
             if descriptor.owner() != identity.writer.key() {
                 return Err(error("Stored writer does not own the test record"));
             }
+        } else if self.protected {
+            return Err(error("Create an identity before publishing"));
         } else {
-            self.create_identity().await?;
+            self.create_identity(None).await?;
         }
         let identity = self
             .identity
@@ -209,11 +285,11 @@ impl BrowserNode {
             writer: Some(identity.writer.clone()),
         };
         if record.get(0).await.map_err(core_error)?.is_none() {
-            let initial = Metadata {
+            let initial = identity.profile.clone().unwrap_or_else(|| Metadata {
                 author_name: "Murmur browser test".into(),
                 bio: "".into(),
                 latest_post_index: None,
-            };
+            });
             record.set(0, encode(&initial)?).await.map_err(core_error)?;
         }
         Ok(self
@@ -226,6 +302,7 @@ impl BrowserNode {
 
     pub async fn publish_probe(&mut self, content: String) -> Result<String> {
         murmur_model::validate_content(&content).map_err(|failure| error(&failure.to_string()))?;
+        self.require_ready().await?;
         let identity = self
             .identity
             .as_mut()
@@ -287,7 +364,7 @@ impl BrowserNode {
         if !self.protected || self.identity.is_some() {
             return Err(error("Checks require a new protected identity"));
         }
-        self.create_identity().await?;
+        self.create_identity(None).await?;
         let identity = self
             .identity
             .as_mut()
@@ -384,7 +461,21 @@ impl BrowserNode {
 }
 
 impl BrowserNode {
-    async fn create_identity(&mut self) -> Result<()> {
+    async fn require_ready(&self) -> Result<()> {
+        if !self
+            .api
+            .get_state()
+            .await
+            .map_err(api_error)?
+            .attachment
+            .public_internet_ready
+        {
+            return Err(error("Veilid is not attached"));
+        }
+        Ok(())
+    }
+
+    async fn create_identity(&mut self, profile: Option<Metadata>) -> Result<()> {
         let descriptor = self
             .context
             .create_dht_record(
@@ -400,6 +491,7 @@ impl BrowserNode {
                 .owner_keypair()
                 .ok_or_else(|| error("Created record has no writer"))?,
             post: None,
+            profile,
         });
         self.save_identity().await
     }

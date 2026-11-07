@@ -8,8 +8,9 @@ identities or private information.
   nor the ring guarantees permanent storage or deletion.
 - Network attachment and replication can fail or take time. An uncertain
   publication must be checked before resending.
-- Current native files and browser probe storage are **not a secure identity
-  vault**. Encrypted onboarding and backup/restore are planned.
+- Browser identities are passphrase-protected, but backup/restore is not
+  available. Losing the passphrase or browser data loses ownership.
+  Native PoC credentials are not passphrase-protected.
 - The read-only bridge sees browser requests and the feeds requested.
   Local plain HTTP does not provide browser-to-server transport privacy.
 - An unlocked browser session trusts the served application code. A worker is

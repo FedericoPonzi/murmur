@@ -3,123 +3,96 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Murmur browser probe</title>
+<title>Your identity · Murmur</title>
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <a class="skip" href="#main-content">Skip to content</a>
 <!-- site_header -->
-<main id="main-content">
-<h1>Murmur browser probe</h1>
-<p>Developer-only feasibility test. Use disposable data: browser storage is
-not yet a passphrase-protected identity vault. This probe publishes one immutable
-test post, not a full feed editor. Stopping or closing the tab stops its node.</p>
+<main id="main-content" class="app-shell">
+<section id="auth" class="auth-layout">
+<div class="auth-intro">
+<p class="eyebrow">Murmur · local preview</p>
+<h1>A little less platform.<br>A little more <span>you.</span></h1>
+<p class="lede">Your words, signed by your identity. Create a profile in this browser, then connect directly to the Veilid network.</p>
+<p>No email. No central account. Your passphrase unlocks this browser's encrypted identity, not a server login.</p>
+<div class="app-warning"><strong>Use disposable data.</strong> Backups and recovery are not available yet. Losing your passphrase or clearing browser storage loses access to this identity. There is no password reset.</div>
+</div>
+<div class="app-panel">
+<div id="create-panel">
+<p class="eyebrow">Make yourself heard</p>
+<h2>Create your identity</h2>
+<p class="preview-notice">Your display name and bio become public when your feed is initialized.</p>
+<form id="create-form">
+<fieldset id="create-fields" disabled>
+<label for="author-name">Display name</label>
+<input id="author-name" autocomplete="nickname" required aria-describedby="name-help">
+<small id="name-help">Up to 80 characters.</small>
+<label for="bio">Bio <span class="optional">(optional)</span></label>
+<textarea id="bio" rows="2" aria-describedby="bio-help"></textarea>
+<small id="bio-help">Up to 280 characters. Say a little about yourself.</small>
+<label for="passphrase">Passphrase</label>
+<input id="passphrase" type="password" autocomplete="new-password" required aria-describedby="passphrase-help">
+<small id="passphrase-help">Use a long, unique passphrase. Keep it somewhere safe.</small>
+<label for="confirm-passphrase">Confirm passphrase</label>
+<input id="confirm-passphrase" type="password" autocomplete="new-password" required>
+<label class="check-line"><input id="acknowledge" type="checkbox" required><span>I understand that losing my passphrase or browser data loses this identity.</span></label>
+<button id="start" type="submit" disabled>Create identity</button>
+</fieldset>
+</form>
+<button id="show-unlock" class="quiet-button" disabled>Already have an identity here? Unlock it</button>
+</div>
+<div id="unlock-panel" hidden>
+<p class="eyebrow">Welcome back</p>
+<h2>Unlock your identity</h2>
+<p>Your identity stays on this browser. Enter your passphrase to start its node.</p>
+<form id="unlock-form">
+<fieldset id="unlock-fields" disabled>
+<label for="unlock-passphrase">Passphrase</label>
+<input id="unlock-passphrase" type="password" autocomplete="current-password" required>
+<button id="unlock-start" type="submit" disabled>Unlock identity</button>
+</fieldset>
+</form>
+<p class="preview-notice">Can't unlock? Check your passphrase. Damaged or missing browser data can also prevent unlocking.</p>
+<button id="show-create" class="quiet-button" disabled>Create or complete identity setup</button>
+</div>
+</div>
+</section>
+<section id="session" class="session-layout" hidden>
+<aside class="app-panel profile-panel">
+<p class="eyebrow">Your identity</p>
+<h1 id="profile-name"></h1>
+<p id="profile-bio"></p>
+<label for="own-key">Your public RecordKey</label>
+<output id="own-key"></output>
+<p class="preview-notice">Share this key so others can read your feed.</p>
+<button id="stop" class="quiet-button" disabled>Lock identity</button>
+<p class="preview-notice">Locking or closing this tab stops its node. Reloading starts locked.</p>
+</aside>
+<div class="app-panel">
+<p class="eyebrow">Your voice</p>
+<h2>Try a first post</h2>
+<p class="preview-notice">This preview supports one immutable post per identity. Posts and profile information are public.</p>
+<label for="content">What's on your mind?</label>
+<textarea id="content" aria-describedby="content-help"></textarea>
+<small id="content-help">Up to 280 characters. An interrupted attempt keeps the same text for retry.</small>
+<button id="publish" disabled>Publish post</button>
+<label for="key">Read a feed by RecordKey</label>
+<input id="key" spellcheck="false">
+<button id="read" disabled>Read feed</button>
+<pre id="feed" aria-label="Feed response"></pre>
+</div>
+</section>
+<p id="status" role="status">Checking local identity...</p>
+<details class="connection-settings">
+<summary>Connection settings</summary>
 <label for="bootstrap">Veilid WebSocket bootstrap</label>
-<input id="bootstrap" value="ws://bootstrap-v1.veilid.net:5150/ws">
-<button id="start">Start node</button><button id="stop" disabled>Stop node</button>
-<p id="status" role="status">Stopped.</p>
+<input id="bootstrap" value="ws://bootstrap-v1.veilid.net:5150/ws" disabled>
+<p class="preview-notice">Local HTTP preview only. Public HTTPS/WSS hosting is not available yet.</p>
 <p>Storage starts: <output id="storage"></output></p>
-<p>Test RecordKey: <output id="own-key"></output></p>
-<label for="content">One disposable test post (280 characters maximum)</label>
-<textarea id="content"></textarea><button id="publish" disabled>Publish test post</button>
-<label for="key">RecordKey to read (browser or native)</label>
-<input id="key"><button id="read" disabled>Read feed</button>
-<pre id="feed"></pre>
+</details>
 </main>
-<script type="module">
-const $ = id => document.getElementById(id);
-let worker, sequence = 0, polling, busy = false, generation = 0;
-const requests = new Map();
-const render = value => { $('feed').textContent = JSON.stringify(value, null, 2); };
-const call = (action, value, timeout = 180000) => new Promise((resolve, reject) => {
-  const id = ++sequence;
-  const timer = setTimeout(() => {
-    requests.delete(id);
-    reject(new Error('Probe timed out; outcome may be uncertain. Stop/restart and retry only the same test text.'));
-    finish('Probe timed out; stop/restart and retry only the same test text.');
-  }, timeout);
-  requests.set(id, { resolve, reject, timer });
-  worker.postMessage({ id, action, value, bootstrap: $('bootstrap').value });
-});
-const controls = attached => {
-  $('publish').disabled = $('read').disabled = !attached || busy;
-  $('start').disabled = !!worker;
-  $('stop').disabled = !worker || busy;
-};
-const finish = message => {
-  generation++;
-  clearInterval(polling);
-  worker?.terminate();
-  worker = undefined;
-  for (const request of requests.values()) {
-    clearTimeout(request.timer);
-    request.reject(new Error(message));
-  }
-  requests.clear();
-  controls(false);
-  $('status').textContent = message;
-};
-$('start').onclick = async () => {
-  const run = ++generation;
-  $('feed').textContent = $('own-key').textContent = '';
-  try { worker = new Worker('./worker.mjs', { type: 'module' }); }
-  catch (failure) { finish(`Worker unavailable: ${failure.message}`); return; }
-  worker.onerror = event => finish(`Worker failed: ${event.message}`);
-  worker.onmessage = ({ data }) => {
-    const request = requests.get(data.id);
-    if (!request) { if (data.error) finish(data.error); return; }
-    clearTimeout(request.timer);
-    requests.delete(data.id);
-    if (data.error) request.reject(new Error(data.error));
-    else request.resolve(data.result);
-  };
-  controls(false);
-  $('status').textContent = 'Starting WASM worker...';
-  try {
-    const state = await call('start');
-    if (run !== generation) return;
-    $('storage').textContent = String(state.starts);
-    $('status').textContent = 'Worker/storage ready. Attaching to Veilid...';
-    const deadline = Date.now() + 120000;
-    let checking = false;
-    polling = setInterval(async () => {
-      if (checking) return;
-      checking = true;
-      try {
-        const state = await call('status');
-        if (run !== generation) return;
-        if (state.ready) {
-          clearInterval(polling);
-          const key = await call('identity');
-          if (run !== generation) return;
-          $('own-key').textContent = key;
-          $('key').value = $('own-key').textContent;
-          $('status').textContent = 'Attached. Ready for the disposable test.';
-          controls(true);
-        } else if (Date.now() > deadline) {
-          finish('Veilid attachment timed out; browser network participation is not proved.');
-        }
-      } catch (failure) { finish(failure.message); }
-      finally { checking = false; }
-    }, 1000);
-  } catch (failure) { finish(failure.message); }
-};
-$('stop').onclick = async () => {
-  clearInterval(polling);
-  try { await call('stop'); finish('Stopped.'); }
-  catch (failure) { finish(failure.message); }
-};
-for (const [button, action, input] of [['publish', 'publish', 'content'], ['read', 'read', 'key']]) {
-  $(button).onclick = async () => {
-    busy = true; controls(true);
-    $('status').textContent = action === 'publish' ? 'Publishing test; do not resend different text.' : 'Reading...';
-    $('feed').textContent = '';
-    try { render(await call(action, $(input).value)); $('status').textContent = 'Confirmed.'; }
-    catch (failure) { $('status').textContent = failure.message; }
-    finally { busy = false; controls(!!worker && !!$('own-key').textContent); }
-  };
-}
-</script>
+<script type="module" src="./app.mjs"></script>
 </body>
 </html>
