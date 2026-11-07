@@ -1,8 +1,8 @@
 # Browser preview
 
-This is a developer-only experiment, not the alpha application. Use disposable
-test identities and harmless public text. The native CLI and read-only bridge
-are unchanged.
+This is an experimental local browser alpha, not a public production release.
+Use disposable identities and harmless public text. The native CLI and read-only
+bridge are unchanged.
 
 ## Build and open
 
@@ -75,6 +75,16 @@ WebSockets, initially to `ws://bootstrap-v1.veilid.net:5150/ws`. The preview
 server does not sign or publish for the browser.
 Network attachment or DHT failures are explicit and are not proof of success.
 Closing the tab stops its worker; background operation is not promised.
+The page permits only same-origin scripts and blocks inline scripts. This does
+not protect against a malicious application served from the same origin.
+
+The assembled preview is exercised in headless Chromium on Linux, including
+keyboard entry, narrow desktop viewports, publishing, backup recovery, guest
+links, follows, cached timeline, and persisted read markers. Narrow viewports
+are not physical phone tests. Android, iOS, Safari, and public HTTPS/WSS hosting
+remain unverified release gates; do not treat them as supported deployments.
+The network retains a 100-slot recent-post ring and reads its newest 20 posts,
+not a permanent remotely browsable archive.
 
 ## Phone testing without public hosting
 

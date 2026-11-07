@@ -1,9 +1,12 @@
 # Browser application
 
 This docs-only build does not include the interactive probe.
-The full browser alpha remains in development.
+The public browser release remains in development.
 
 ## Try the current probe locally
+
+The local alpha is experimental. Chromium on Linux is exercised; physical
+phones and public HTTPS/WSS hosting are not yet verified.
 
 Follow the [browser probe guide](../docs/browser-probe.html) to build its WASM
 bindings, then build the site with `python3 website/build.py --with-app`.

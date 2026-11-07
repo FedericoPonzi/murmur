@@ -53,7 +53,8 @@ function installWorker() {
 const frame = document.createElement('iframe');
 frame.hidden = true;
 try {
-  const source = await (await fetch('./index.html')).text();
+  const source = (await (await fetch('./index.html')).text())
+    .replace(/<meta http-equiv="Content-Security-Policy"[^>]+>/, '');
   const script = '<script type="module" src="./app.mjs"></script>';
   assert(source.includes(script), 'App module was not found.');
   frame.srcdoc = source.replace(script, `<script>(${installWorker.toString()})();</script>${script}`);

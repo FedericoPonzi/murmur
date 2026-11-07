@@ -13,6 +13,7 @@ from urllib.request import urlopen
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -74,6 +75,17 @@ def check(storage_only=False):
         author = "Disposable <b>author</b>"
         visit()
         wait.until(lambda _: element("start").is_enabled())
+        skip = driver.find_element(By.CSS_SELECTOR, 'a[href="#main-content"]')
+        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.TAB)
+        assert driver.execute_script("return document.activeElement === arguments[0]", skip)
+        skip.send_keys(Keys.ENTER)
+        assert driver.current_url.endswith("#main-content")
+        assert not driver.execute_script("""
+            const script = document.createElement('script');
+            script.textContent = 'window.inlineScriptRan = true';
+            document.body.append(script);
+            return window.inlineScriptRan === true;
+        """), "The app must block injected inline scripts."
         element("author-name").send_keys(author)
         element("bio").send_keys("A public disposable profile.")
         element("passphrase").send_keys(passphrase)
@@ -254,10 +266,33 @@ def check(storage_only=False):
             click("refresh-timeline")
             wait.until(lambda _: content in text("timeline") and element("refresh-timeline").is_enabled())
             assert len(element("timeline").find_elements(By.TAG_NAME, "article")) == 3
-            driver.refresh()
+            assert text("unread-count").startswith("3 unread")
+            click("mark-read")
+            assert text("unread-count").startswith("0 unread")
+            for width in (390, 320, 1280):
+                driver.set_window_size(width, 900)
+                assert driver.execute_script("return document.documentElement.scrollWidth <= innerWidth")
+            guest_url = driver.current_url.split("#")[0].split("?")[0]
+            click("stop-reader")
+            wait.until(lambda _: text("status") == "Reader stopped.")
+            driver.get(guest_url + "?feed=" + quote(key, safe=""))
+            wait.until(lambda _: '"posts"' in text("feed"))
+            assert not element("identity-panel").is_displayed()
+            assert not element("author-tools").is_displayed()
+            assert not element("publish").is_enabled()
+            assert [post["index"] for post in json.loads(text("feed"))["posts"]] == [2, 1, 0]
+            assert text("unread-count").startswith("0 unread")
+            log("PASS: shared links open a guest, preserve cached reads and unread markers, and do not unlock an author.")
+            click("stop-reader")
+            wait.until(lambda _: text("status") == "Reader stopped.")
+            driver.get(guest_url + "?feed=" + quote(key, safe="") + "&feed=" + quote(key, safe=""))
+            wait.until(lambda _: text("status").startswith("Invalid shared feed link:"))
+            assert not element("session").is_displayed()
+            assert element("unlock-start").is_enabled()
+            driver.get(guest_url)
             wait.until(lambda _: element("browse-start").is_enabled())
             click("browse-start")
-            storage(2)
+            storage(3)
             assert key in text("follow-list")
             assert content in text("timeline")
             click("stop-reader")
