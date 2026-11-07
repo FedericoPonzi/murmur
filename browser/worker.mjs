@@ -18,12 +18,16 @@ if (typeof self !== 'undefined') {
   let queue = Promise.resolve();
   const send = (id, result, failure) => self.postMessage({ id, result, error: failure });
   self.onmessage = ({ data }) => {
-    let passphrase;
-    const authenticating = data.action === 'create' || data.action === 'unlock';
+    let passphrase, backupPassphrase;
+    const authenticating = ['create', 'unlock', 'restore'].includes(data.action);
     if (authenticating) {
       passphrase = data.value?.passphrase;
       if (data.value && typeof data.value === 'object') data.value.passphrase = undefined;
-    } else if (data.action === 'start_protected') {
+      if (data.action === 'restore') {
+        backupPassphrase = data.value?.backup_passphrase;
+        if (data.value && typeof data.value === 'object') data.value.backup_passphrase = undefined;
+      }
+    } else if (data.action === 'start_protected' || data.action === 'backup') {
       passphrase = data.value;
       data.value = undefined;
     }
@@ -45,6 +49,9 @@ if (typeof self !== 'undefined') {
           if (data.action === 'create' && (typeof data.value?.author_name !== 'string' || typeof data.value?.bio !== 'string')) {
             throw new Error('Profile name and bio must be text.');
           }
+          if (data.action === 'restore' && (typeof data.value?.backup !== 'string' || typeof backupPassphrase !== 'string')) {
+            throw new Error('Provide an encrypted backup and its passphrase.');
+          }
           const started = new Promise((resolve, reject) => {
             const namespace = protectedStart ? 'murmur-browser-identity' : 'murmur-browser-probe';
             running = navigator.locks.request(namespace, { ifAvailable: true }, async lock => {
@@ -58,10 +65,12 @@ if (typeof self !== 'undefined') {
                     node = await wasm.create_profile_node(bootstrap, passphrase, data.value.author_name, data.value.bio);
                   } else if (data.action === 'unlock') {
                     node = await wasm.unlock_profile_node(bootstrap, passphrase);
+                  } else if (data.action === 'restore') {
+                    node = await wasm.restore_profile_node(bootstrap, data.value.backup, backupPassphrase, passphrase);
                   } else {
                     node = protectedStart ? await wasm.start_protected_node(bootstrap, passphrase) : await wasm.start_node(bootstrap);
                   }
-                } finally { passphrase = undefined; }
+                } finally { passphrase = backupPassphrase = undefined; }
                 const state = JSON.parse(await node.status());
                 if (authenticating) state.identity = JSON.parse(node.local_identity());
                 resolve(state);
@@ -83,16 +92,17 @@ if (typeof self !== 'undefined') {
           send(data.id, 'Stopped.');
         } else {
           if (!node) throw new Error('Start the node first.');
-          const methods = { status: 'status', profile: 'local_identity', identity: 'identity_key', reconcile: 'reconcile_pending', publish: 'publish_post', read: 'read_feed',
+          if (data.action === 'backup' && typeof passphrase !== 'string') throw new Error('Passphrase must be a string.');
+          const methods = { status: 'status', profile: 'local_identity', identity: 'identity_key', reconcile: 'reconcile_pending', publish: 'publish_post', read: 'read_feed', backup: 'export_backup',
             test_seed: 'test_seed_identity', test_storage: 'test_storage' };
           const method = methods[data.action];
           if (!Object.hasOwn(methods, data.action) || typeof node[method] !== 'function') throw new Error('Unknown probe command.');
-          const result = await node[method](data.value);
+          const result = await node[method](data.action === 'backup' ? passphrase : data.value);
           send(data.id, ['status', 'profile', 'reconcile', 'publish', 'read'].includes(data.action)
             ? JSON.parse(result) : result);
         }
       } catch (failure) { send(data.id, undefined, String(failure)); }
-      finally { passphrase = undefined; }
+      finally { passphrase = backupPassphrase = undefined; }
     });
   };
 }

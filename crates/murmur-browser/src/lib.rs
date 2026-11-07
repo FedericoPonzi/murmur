@@ -57,6 +57,10 @@ struct TestIdentity {
     post: Option<Post>,
     #[serde(default)]
     profile: Option<Metadata>,
+    #[serde(default)]
+    history: Vec<Post>,
+    #[serde(default)]
+    imported: bool,
 }
 
 fn error(message: &str) -> JsValue {
@@ -131,6 +135,99 @@ pub async fn create_profile_node(
 #[wasm_bindgen]
 pub async fn unlock_profile_node(bootstrap: String, passphrase: String) -> Result<BrowserNode> {
     start_identity(bootstrap, Zeroizing::new(passphrase), None).await
+}
+
+#[wasm_bindgen]
+pub async fn restore_profile_node(
+    bootstrap: String,
+    envelope: String,
+    backup_passphrase: String,
+    passphrase: String,
+) -> Result<BrowserNode> {
+    let backup_passphrase = Zeroizing::new(backup_passphrase);
+    let passphrase = Zeroizing::new(passphrase);
+    let mut credentials =
+        murmur_core::credentials::Credentials::open(envelope.as_bytes(), &backup_passphrase)
+            .map_err(core_error)?;
+    let mut node = start_protected(bootstrap, passphrase).await?;
+    let restore = async {
+        if node.identity.is_some() {
+            return Err(error(
+                "An identity already exists. Restore into a fresh browser origin instead.",
+            ));
+        }
+        node.api
+            .crypto()
+            .map_err(api_error)?
+            .check_keypair(&credentials.writer)
+            .map_err(api_error)?;
+        let metadata = murmur_core::deadline(
+            async {
+                while !node.api.get_state().await?.attachment.public_internet_ready {
+                    veilid_core::tools::sleep(1000).await;
+                }
+                let descriptor = node
+                    .context
+                    .open_dht_record(
+                        credentials.record_key.clone(),
+                        Some(credentials.writer.clone()),
+                        None,
+                    )
+                    .await?;
+                murmur_core::validate_schema(descriptor.ref_schema())?;
+                if descriptor.owner() != credentials.writer.key() {
+                    return Err("Backup writer does not own this feed".into());
+                }
+                let record = VeilidRecord {
+                    context: &node.context,
+                    key: credentials.record_key.clone(),
+                    writer: None,
+                };
+                let metadata = murmur_core::read_metadata(&record).await?;
+                if let Some(pending) = &credentials.pending {
+                    if metadata
+                        .latest_post_index
+                        .is_some_and(|latest| latest >= pending.index)
+                    {
+                        let stored = record
+                            .get(murmur_model::post_subkey(pending.index))
+                            .await?
+                            .ok_or("Pending publication cannot be verified from this feed")?;
+                        let stored: Post = murmur_core::decode(&stored)?;
+                        if &stored != pending {
+                            return Err("Pending publication conflicts with this feed".into());
+                        }
+                        murmur_core::credentials::retain_post(&mut credentials.history, stored)?;
+                        credentials.pending = None;
+                    } else if murmur_model::next_index(metadata.latest_post_index)? != pending.index
+                    {
+                        return Err("Pending publication is out of sequence".into());
+                    }
+                }
+                Ok(metadata)
+            },
+            150,
+        )
+        .await
+        .map_err(core_error)?;
+        node.identity = Some(TestIdentity {
+            key: credentials.record_key,
+            writer: credentials.writer,
+            post: credentials.pending,
+            profile: Some(metadata),
+            history: credentials.history,
+            imported: true,
+        });
+        node.save_identity().await
+    }
+    .await;
+    match restore {
+        Ok(()) => Ok(node),
+        Err(failure) => {
+            node.shutdown().await;
+            Err(failure)
+        }
+    }
 }
 
 async fn start_identity(
@@ -243,6 +340,7 @@ impl BrowserNode {
                 "author_name": profile.map_or("Murmur browser test", |profile| profile.author_name.as_str()),
                 "bio": profile.map_or("", |profile| profile.bio.as_str()),
                 "probe_post": identity.post,
+                "history": identity.history,
             })
         });
         String::from_utf8(encode(&public)?).map_err(|_| error("JSON encoding failed"))
@@ -285,6 +383,11 @@ impl BrowserNode {
             writer: Some(identity.writer.clone()),
         };
         if record.get(0).await.map_err(core_error)?.is_none() {
+            if identity.imported {
+                return Err(error(
+                    "Restored feed metadata is unavailable; refusing to reset it",
+                ));
+            }
             let initial = identity.profile.clone().unwrap_or_else(|| Metadata {
                 author_name: "Murmur browser test".into(),
                 bio: "".into(),
@@ -365,6 +468,29 @@ impl BrowserNode {
             .map_err(core_error)?;
         self.clear_pending().await?;
         String::from_utf8(encode(&post)?).map_err(|_| error("JSON encoding failed"))
+    }
+
+    pub async fn export_backup(&self, passphrase: String) -> Result<String> {
+        let passphrase = Zeroizing::new(passphrase);
+        self.require_ready().await?;
+        let identity = self.identity.as_ref().ok_or_else(|| error("No identity"))?;
+        let record = VeilidRecord {
+            context: &self.context,
+            key: identity.key.clone(),
+            writer: None,
+        };
+        let credentials = murmur_core::credentials::Credentials {
+            version: 1,
+            record_key: identity.key.clone(),
+            writer: identity.writer.clone(),
+            profile: murmur_core::read_metadata(&record)
+                .await
+                .map_err(core_error)?,
+            pending: identity.post.clone(),
+            history: identity.history.clone(),
+        };
+        let envelope = credentials.seal(&passphrase).map_err(core_error)?;
+        String::from_utf8(envelope).map_err(|_| error("Backup encoding failed"))
     }
 
     pub async fn read_feed(&self, key: String) -> Result<String> {
@@ -486,17 +612,23 @@ impl BrowserNode {
 
 impl BrowserNode {
     async fn clear_pending(&mut self) -> Result<()> {
-        let pending = self
-            .identity
-            .as_mut()
-            .ok_or_else(|| error("No identity"))?
-            .post
-            .take();
+        let identity = self.identity.as_mut().ok_or_else(|| error("No identity"))?;
+        let Some(pending) = identity.post.clone() else {
+            return Ok(());
+        };
+        let old_history = identity.history.clone();
+        let old_profile = identity.profile.clone();
+        murmur_core::credentials::retain_post(&mut identity.history, pending.clone())
+            .map_err(core_error)?;
+        if let Some(profile) = &mut identity.profile {
+            profile.latest_post_index = profile.latest_post_index.max(Some(pending.index));
+        }
+        identity.post = None;
         if let Err(failure) = self.save_identity().await {
-            self.identity
-                .as_mut()
-                .ok_or_else(|| error("No identity"))?
-                .post = pending;
+            let identity = self.identity.as_mut().ok_or_else(|| error("No identity"))?;
+            identity.post = Some(pending);
+            identity.history = old_history;
+            identity.profile = old_profile;
             return Err(failure);
         }
         Ok(())
@@ -533,6 +665,8 @@ impl BrowserNode {
                 .ok_or_else(|| error("Created record has no writer"))?,
             post: None,
             profile,
+            history: vec![],
+            imported: false,
         });
         self.save_identity().await
     }

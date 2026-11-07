@@ -19,7 +19,7 @@ use tokio::{
 use veilid::{deadline, validate_content, Error, Node, Result};
 
 const USAGE: &str =
-    "Usage: murmur [--data-dir PATH] serve\n       murmur [--data-dir PATH] post \"message\"";
+    "Usage: murmur [--data-dir PATH] serve\n       murmur [--data-dir PATH] post \"message\"\n       murmur [--data-dir PATH] export BACKUP_FILE (passphrase on stdin)";
 const IPC_LIMIT: usize = 8192;
 
 #[tokio::main]
@@ -45,6 +45,7 @@ async fn main() -> ExitCode {
 enum Command {
     Serve,
     Post(String),
+    Export(PathBuf),
 }
 
 #[derive(Debug)]
@@ -79,6 +80,7 @@ fn parse_args(mut args: Vec<String>) -> Result<Args> {
     let command = match args.as_slice() {
         [command] if command == "serve" => Command::Serve,
         [command, content] if command == "post" => Command::Post(content.clone()),
+        [command, output] if command == "export" => Command::Export(PathBuf::from(output)),
         _ => return Err(Error::new(400, USAGE)),
     };
     Ok(Args { directory, command })
@@ -277,13 +279,35 @@ async fn shutdown_signal() -> Result<()> {
 
 async fn run(arguments: Vec<String>) -> Result<()> {
     let args = parse_args(arguments)?;
-    if let Command::Post(content) = args.command {
-        let published = post_client(&args.directory.join("murmur.sock"), content).await?;
-        println!(
-            "Published post {} on {}",
-            published.index, published.record_key
-        );
-        return Ok(());
+    match args.command {
+        Command::Post(content) => {
+            let published = post_client(&args.directory.join("murmur.sock"), content).await?;
+            println!(
+                "Published post {} on {}",
+                published.index, published.record_key
+            );
+            return Ok(());
+        }
+        Command::Export(output) => {
+            use std::io::{IsTerminal, Read};
+            if std::io::stdin().is_terminal() {
+                return Err(Error::new(
+                    400,
+                    "Pipe the backup passphrase on standard input, not the command line",
+                ));
+            }
+            let mut passphrase = zeroize::Zeroizing::new(String::new());
+            std::io::stdin()
+                .take(1025)
+                .read_to_string(&mut passphrase)?;
+            murmur_core::vault::validate_passphrase(&passphrase)
+                .map_err(murmur_core::Error::from)?;
+            let _lock = lock_directory(&args.directory)?;
+            veilid::export_identity(&args.directory, &output, &passphrase)?;
+            println!("Encrypted backup saved to {}", output.display());
+            return Ok(());
+        }
+        Command::Serve => {}
     }
     let _lock = lock_directory(&args.directory)?;
     let directory = fs::canonicalize(&args.directory)?;
@@ -390,6 +414,15 @@ mod tests {
         io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
         net::UnixListener,
     };
+
+    #[test]
+    fn parses_offline_backup_export() {
+        let args = parse_args(vec!["export".into(), "identity.murmur".into()]).unwrap();
+        assert_eq!(
+            args.command,
+            Command::Export(PathBuf::from("identity.murmur"))
+        );
+    }
 
     #[test]
     fn parses_only_supported_cli_commands() {

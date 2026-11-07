@@ -1,7 +1,7 @@
 # Using Murmur
 
-Murmur is a PoC. The web UI is read-only; publishing requires access to the
-server account through SSH.
+This guide covers the native PoC and its read-only bridge. For the browser
+application, see the [browser guide](browser-probe.md).
 
 ## Start and read
 
@@ -59,6 +59,20 @@ Veilid stores, configuration, and any `pending-post.json`. Restore it privately
 under the same server account. Directory permissions are 0700; generated
 configuration/pending files and the publishing socket are 0600.
 Do not run concurrent copies of an author's identity on different servers.
+
+To export a portable encrypted identity for the browser, stop the server first.
+In Bash:
+
+```bash
+read -rs -p "Backup passphrase: " passphrase; printf '\n'
+printf '%s' "$passphrase" | ./target/release/murmur --data-dir "$HOME/.local/share/murmur" export identity.murmur
+unset passphrase
+```
+
+Keep the backup and its passphrase safe. Export refuses to overwrite an existing
+file and preserves the RecordKey and any pending post. It is not a permanent
+post archive. Stop the old publisher before restoring elsewhere; this is
+recovery or transfer, not multi-device synchronization.
 
 ## Failures and limits
 

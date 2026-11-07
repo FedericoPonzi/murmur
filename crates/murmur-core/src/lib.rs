@@ -1,3 +1,4 @@
+pub mod credentials;
 pub mod vault;
 
 use murmur_model::{
@@ -22,6 +23,7 @@ pub enum Error {
     WriteConflict,
     IncompleteOwnerKey,
     Deadline,
+    Vault(vault::Error),
 }
 
 impl std::fmt::Display for Error {
@@ -37,11 +39,18 @@ impl std::fmt::Display for Error {
             Self::WriteConflict => "DHT write conflict; publication not confirmed",
             Self::IncompleteOwnerKey => "use the complete RecordKey, including its encryption key",
             Self::Deadline => "operation timed out; retry later",
+            Self::Vault(error) => return error.fmt(f),
         })
     }
 }
 
 impl std::error::Error for Error {}
+
+impl From<vault::Error> for Error {
+    fn from(error: vault::Error) -> Self {
+        Self::Vault(error)
+    }
+}
 
 impl From<ModelError> for Error {
     fn from(error: ModelError) -> Self {

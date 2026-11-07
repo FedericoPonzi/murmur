@@ -6,7 +6,7 @@ use chacha20poly1305::{
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
-pub const MAX_CREDENTIALS: usize = 16 * 1024;
+pub const MAX_CREDENTIALS: usize = 2 * 1024 * 1024;
 pub const MAX_ENVELOPE: usize = MAX_CREDENTIALS * 4 + 2048;
 const MEMORY_KIB: u32 = 19_456;
 const ITERATIONS: u32 = 2;

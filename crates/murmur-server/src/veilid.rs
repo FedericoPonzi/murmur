@@ -174,6 +174,39 @@ fn validate_config(config: &Config) -> Result<()> {
     }
 }
 
+pub fn export_identity(directory: &Path, output: &Path, passphrase: &str) -> Result<()> {
+    let config: Config = load_json(&directory.join("murmur_config.json"))?
+        .ok_or_else(|| Error::new(400, "no local identity to export"))?;
+    validate_config(&config)?;
+    let pending: Option<Post> = load_json(&directory.join("pending-post.json"))?;
+    let credentials = murmur_core::credentials::Credentials {
+        version: 1,
+        record_key: config.record_key.ok_or("no local feed key to export")?,
+        writer: config.writer.ok_or("no local writer to export")?,
+        profile: Metadata {
+            author_name: config.author_name,
+            bio: config.bio,
+            latest_post_index: pending.as_ref().and_then(|post| post.index.checked_sub(1)),
+        },
+        pending,
+        history: vec![],
+    };
+    let envelope = credentials.seal(passphrase)?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(output)?;
+    file.write_all(&envelope)?;
+    file.sync_all()?;
+    let parent = output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
 async fn tracked<T: Send + 'static>(
     workers: &Mutex<Vec<JoinHandle<()>>>,
     work: impl Future<Output = Result<T>> + Send + 'static,
@@ -426,6 +459,35 @@ mod tests {
             timestamp: 42,
             content: format!("post {index}"),
         }
+    }
+
+    #[test]
+    fn exports_encrypted_pending_identity_without_overwriting_backups() {
+        let directory = tempfile::tempdir().unwrap();
+        let zero = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        let config = Config {
+            author_name: "Native author".into(),
+            bio: "".into(),
+            record_key: Some(format!("VLD0:{zero}:{zero}").parse().unwrap()),
+            writer: Some(format!("VLD0:{zero}:{zero}").parse().unwrap()),
+        };
+        save_json(&directory.path().join("murmur_config.json"), &config).unwrap();
+        save_json(&directory.path().join("pending-post.json"), &post(3)).unwrap();
+        let output = directory.path().join("identity.murmur");
+        export_identity(directory.path(), &output, "disposable backup passphrase").unwrap();
+        let bytes = fs::read(&output).unwrap();
+        let restored =
+            murmur_core::credentials::Credentials::open(&bytes, "disposable backup passphrase")
+                .unwrap();
+        assert_eq!(Some(restored.record_key), config.record_key);
+        assert_eq!(Some(restored.writer), config.writer);
+        assert_eq!(restored.pending, Some(post(3)));
+        assert_eq!(
+            fs::metadata(&output).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert!(export_identity(directory.path(), &output, "another passphrase").is_err());
+        assert_eq!(fs::read(output).unwrap(), bytes);
     }
 
     #[test]
