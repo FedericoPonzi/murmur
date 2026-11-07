@@ -70,7 +70,8 @@ def build(repository, with_app=False):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(re.sub(r'href="([^"]+)"', rewrite, page), encoding="utf-8")
         shutil.copy2(repository / "LICENSE", assembled / "LICENSE.txt")
-        shutil.copy2(browser / "style.css", assembled / "style.css")
+        for asset in ("style.css", "favicon.svg"):
+            shutil.copy2(browser / asset, assembled / asset)
         if with_app:
             probe = (browser / "index.html").read_text(encoding="utf-8")
             if "<!-- site_header -->" not in probe or 'href="./style.css"' not in probe:
@@ -78,7 +79,8 @@ def build(repository, with_app=False):
             header = (website / "templates/main/header.html").read_text(encoding="utf-8")
             probe = probe.replace("<!-- site_header -->", header.replace("$GENERETO['root']", ".."))
             (assembled / "app/index.html").write_text(
-                probe.replace('href="./style.css"', 'href="../style.css"'), encoding="utf-8",
+                probe.replace('href="./style.css"', 'href="../style.css"')
+                     .replace('href="./favicon.svg"', 'href="../favicon.svg"'), encoding="utf-8",
             )
             shutil.copy2(browser / "worker.mjs", assembled / "app/worker.mjs")
             shutil.copytree(browser / "pkg", assembled / "app/pkg")

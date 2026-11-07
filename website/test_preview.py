@@ -23,15 +23,27 @@ class Links(HTMLParser):
     def __init__(self, source):
         super().__init__()
         self.links, self.ids, self.stylesheets = [], set(), []
+        self.navigation, self.in_navigation = [], False
+        self.descriptions = []
         self.feed(source)
 
     def handle_starttag(self, tag, attributes):
         attributes = dict(attributes)
+        if tag == "nav" and attributes.get("aria-label") == "Primary":
+            self.in_navigation = True
+        if tag == "a" and self.in_navigation:
+            self.navigation.append(attributes["href"])
         self.links.extend(attributes[key] for key in ("href", "src") if key in attributes)
         if "id" in attributes:
             self.ids.add(attributes["id"])
         if tag == "link" and attributes.get("rel") == "stylesheet":
             self.stylesheets.append(attributes["href"])
+        if tag == "meta" and attributes.get("name") == "description":
+            self.descriptions.append(attributes.get("content", ""))
+
+    def handle_endtag(self, tag):
+        if tag == "nav":
+            self.in_navigation = False
 
 
 class BuildTests(unittest.TestCase):
@@ -48,7 +60,7 @@ class BuildTests(unittest.TestCase):
             source, target = REPOSITORY / name, self.root / name
             shutil.copytree(source, target) if source.is_dir() else shutil.copy2(source, target)
         (self.root / "browser/pkg").mkdir(parents=True)
-        for name in ("index.html", "worker.mjs", "style.css"):
+        for name in ("index.html", "worker.mjs", "style.css", "favicon.svg"):
             shutil.copy2(REPOSITORY / "browser" / name, self.root / "browser" / name)
         (self.root / "browser/pkg/murmur_browser.js").write_text("export default async () => {};")
         (self.root / "browser/pkg/murmur_browser_bg.wasm").write_bytes(WASM)
@@ -105,6 +117,24 @@ class BuildTests(unittest.TestCase):
             row = next(row for row in rows if platform in row)
             self.assertIn("Planned", row)
             self.assertNotRegex(row, r"<a[\s>]")
+
+    def test_primary_navigation_reaches_landing_sections_and_app_from_docs(self):
+        base = "https://preview.invalid/murmur/"
+        navigation = Links(self.read("docs/index.html")).navigation
+        sections = [urlsplit(urljoin(base + "docs/index.html", link))
+                    for link in navigation if urlsplit(link).fragment]
+        self.assertTrue(sections, "Primary navigation needs a landing-page section.")
+        for section in sections:
+            self.assertEqual(section.path, "/murmur/index.html")
+            self.assertIn(section.fragment, Links(self.read("index.html")).ids)
+        self.assertIn(base + "app/index.html",
+                      [urljoin(base + "docs/index.html", link) for link in navigation])
+
+    def test_landing_html_is_not_interpreted_as_page_metadata(self):
+        descriptions = Links(self.read("index.html")).descriptions
+        self.assertEqual(len(descriptions), 1)
+        self.assertTrue(descriptions[0])
+        self.assertNotRegex(descriptions[0], r"[<>]")
 
     def test_failed_build_preserves_working_output(self):
         self.build("--with-app")

@@ -55,7 +55,7 @@ def check(storage_only=False):
         if os.environ.get("MURMUR_PREVIEW_URL"):
             driver.find_element(By.LINK_TEXT, "Docs").click()
             wait.until(lambda _: driver.find_element(By.TAG_NAME, "h1").text == "Documentation")
-            driver.find_element(By.LINK_TEXT, "Current app").click()
+            driver.find_element(By.LINK_TEXT, "Open app").click()
         element("start").click()
         storage(1)
         if not storage_only:
