@@ -135,10 +135,12 @@ dependencies = [
  "blanket",
  "futures-core",
  "futures-task",
+ "futures-timer",
  "futures-util",
  "pin-project",
  "rustc_version",
  "tokio",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -1024,6 +1026,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd"
 
 [[package]]
+name = "futures-timer"
+version = "3.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af43fadb8a98512d547e37b4e92e0ced13e205c061b87b4623eff01d918d6968"
+dependencies = [
+ "gloo-timers",
+ "send_wrapper",
+]
+
+[[package]]
 name = "futures-util"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1103,6 +1115,18 @@ checksum = "8c6a94fa8cd88bea0babf8a27fe9abbcdece831fd1c3c84dd5c231fab4685ec7"
 dependencies = [
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "gloo-timers"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "482ce8a491a501da4cd806bd190275363d674f2845005c6ddbd5d3e1dd54495d"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "js-sys",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1599,6 +1623,18 @@ dependencies = [
  "tokio",
  "tower",
  "veilid-core",
+]
+
+[[package]]
+name = "murmur-browser"
+version = "0.1.0"
+dependencies = [
+ "murmur-model",
+ "serde",
+ "serde_json",
+ "veilid-core",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -3066,6 +3102,7 @@ dependencies = [
  "wasm-bindgen",
  "winapi",
  "windows",
+ "ws_stream_wasm",
 ]
 
 [[package]]

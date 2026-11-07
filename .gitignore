@@ -1,4 +1,5 @@
 /target/
+/browser/pkg/
 /murmur-data/
 murmur_config.json
 pending-post.json

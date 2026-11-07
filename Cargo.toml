@@ -6,7 +6,7 @@ rust-version = "1.89"
 license = "MIT"
 
 [workspace]
-members = ["crates/murmur-model"]
+members = ["crates/murmur-model", "crates/murmur-browser"]
 resolver = "2"
 
 [dependencies]

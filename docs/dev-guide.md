@@ -18,6 +18,8 @@ Veilid, Tokio, Axum, or native storage; transport-specific errors stay native.
 The frontend uses plain JavaScript and renders untrusted text with `textContent`.
 Small `RecordIo`/`FeedSource` seams allow behavior tests without Internet access;
 there is no external Veilid daemon, database server, or JavaScript framework.
+The separate [browser probe](browser-probe.md) tests a worker-hosted WASM node
+without changing the native application or exposing its writer over HTTP.
 
 ## Build and checks
 

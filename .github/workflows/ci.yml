@@ -31,7 +31,22 @@ jobs:
         run: cargo fmt --all --check
       - name: Run tests
         run: cargo test --workspace --locked --all-targets
+      - name: Check browser worker
+        run: node --test browser/worker.test.mjs
       - name: Run Clippy
         run: cargo clippy --workspace --locked --all-targets -- -D warnings
       - name: Build release
         run: cargo build --workspace --release --locked
+  wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install Rust WASM tools
+        run: rustup toolchain install stable --profile minimal --component clippy --target wasm32-unknown-unknown --no-self-update
+      - name: Check WASM code
+        run: cargo clippy -p murmur-browser --target wasm32-unknown-unknown --release --locked -- -D warnings
+      - name: Build WASM
+        run: cargo build -p murmur-browser --target wasm32-unknown-unknown --release --locked

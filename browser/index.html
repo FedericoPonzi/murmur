@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Murmur browser probe</title>
+<style>
+body { font: 16px system-ui; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
+label { display: block; margin-top: 1rem; }
+input, textarea { box-sizing: border-box; width: 100%; padding: .5rem; }
+button { margin: .5rem .5rem .5rem 0; padding: .5rem; }
+pre, output { white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+<h1>Murmur browser probe</h1>
+<p>Developer-only feasibility test. Use disposable data: browser storage is
+not yet a passphrase-protected identity vault. This probe publishes one immutable
+test post, not a full feed editor. Stopping or closing the tab stops its node.</p>
+<label for="bootstrap">Veilid WebSocket bootstrap</label>
+<input id="bootstrap" value="ws://bootstrap-v1.veilid.net:5150/ws">
+<button id="start">Start node</button><button id="stop" disabled>Stop node</button>
+<p id="status" role="status">Stopped.</p>
+<p>Storage starts: <output id="storage"></output></p>
+<p>Test RecordKey: <output id="own-key"></output></p>
+<label for="content">One disposable test post (280 characters maximum)</label>
+<textarea id="content"></textarea><button id="publish" disabled>Publish test post</button>
+<label for="key">RecordKey to read (browser or native)</label>
+<input id="key"><button id="read" disabled>Read feed</button>
+<pre id="feed"></pre>
+<script type="module">
+const $ = id => document.getElementById(id);
+let worker, sequence = 0, polling, busy = false, generation = 0;
+const requests = new Map();
+const render = value => { $('feed').textContent = JSON.stringify(value, null, 2); };
+const call = (action, value, timeout = 180000) => new Promise((resolve, reject) => {
+  const id = ++sequence;
+  const timer = setTimeout(() => {
+    requests.delete(id);
+    reject(new Error('Probe timed out; outcome may be uncertain. Stop/restart and retry only the same test text.'));
+    finish('Probe timed out; stop/restart and retry only the same test text.');
+  }, timeout);
+  requests.set(id, { resolve, reject, timer });
+  worker.postMessage({ id, action, value, bootstrap: $('bootstrap').value });
+});
+const controls = attached => {
+  $('publish').disabled = $('read').disabled = !attached || busy;
+  $('start').disabled = !!worker;
+  $('stop').disabled = !worker || busy;
+};
+const finish = message => {
+  generation++;
+  clearInterval(polling);
+  worker?.terminate();
+  worker = undefined;
+  for (const request of requests.values()) {
+    clearTimeout(request.timer);
+    request.reject(new Error(message));
+  }
+  requests.clear();
+  controls(false);
+  $('status').textContent = message;
+};
+$('start').onclick = async () => {
+  const run = ++generation;
+  $('feed').textContent = $('own-key').textContent = '';
+  try { worker = new Worker('./worker.mjs', { type: 'module' }); }
+  catch (failure) { finish(`Worker unavailable: ${failure.message}`); return; }
+  worker.onerror = event => finish(`Worker failed: ${event.message}`);
+  worker.onmessage = ({ data }) => {
+    const request = requests.get(data.id);
+    if (!request) { if (data.error) finish(data.error); return; }
+    clearTimeout(request.timer);
+    requests.delete(data.id);
+    if (data.error) request.reject(new Error(data.error));
+    else request.resolve(data.result);
+  };
+  controls(false);
+  $('status').textContent = 'Starting WASM worker...';
+  try {
+    const state = await call('start');
+    if (run !== generation) return;
+    $('storage').textContent = String(state.starts);
+    $('status').textContent = 'Worker/storage ready. Attaching to Veilid...';
+    const deadline = Date.now() + 120000;
+    let checking = false;
+    polling = setInterval(async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const state = await call('status');
+        if (run !== generation) return;
+        if (state.ready) {
+          clearInterval(polling);
+          const key = await call('identity');
+          if (run !== generation) return;
+          $('own-key').textContent = key;
+          $('key').value = $('own-key').textContent;
+          $('status').textContent = 'Attached. Ready for the disposable test.';
+          controls(true);
+        } else if (Date.now() > deadline) {
+          finish('Veilid attachment timed out; browser network participation is not proved.');
+        }
+      } catch (failure) { finish(failure.message); }
+      finally { checking = false; }
+    }, 1000);
+  } catch (failure) { finish(failure.message); }
+};
+$('stop').onclick = async () => {
+  clearInterval(polling);
+  try { await call('stop'); finish('Stopped.'); }
+  catch (failure) { finish(failure.message); }
+};
+for (const [button, action, input] of [['publish', 'publish', 'content'], ['read', 'read', 'key']]) {
+  $(button).onclick = async () => {
+    busy = true; controls(true);
+    $('status').textContent = action === 'publish' ? 'Publishing test; do not resend different text.' : 'Reading...';
+    $('feed').textContent = '';
+    try { render(await call(action, $(input).value)); $('status').textContent = 'Confirmed.'; }
+    catch (failure) { $('status').textContent = failure.message; }
+    finally { busy = false; controls(!!worker && !!$('own-key').textContent); }
+  };
+}
+</script>
+</html>
