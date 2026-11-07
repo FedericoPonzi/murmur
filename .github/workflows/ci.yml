@@ -30,7 +30,7 @@ jobs:
       - name: Install Genereto
         run: cargo install --git https://github.com/FedericoPonzi/genereto --rev 9a21250e4dcfb93bc7b03cb003619e621ae0b6c4 --locked
       - name: Check generated site
-        run: node --test website/build.test.mjs
+        run: node --test website/*.test.mjs
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 45

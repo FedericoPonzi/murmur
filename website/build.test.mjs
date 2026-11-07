@@ -19,6 +19,12 @@ before(() => {
   for (const name of ['README.md', 'LICENSE', 'docs']) {
     cpSync(join(repository, name), join(fixture, name), { recursive: true });
   }
+  mkdirSync(join(fixture, 'browser/pkg'), { recursive: true });
+  for (const name of ['index.html', 'worker.mjs']) {
+    cpSync(join(repository, 'browser', name), join(fixture, 'browser', name));
+  }
+  writeFileSync(join(fixture, 'browser/pkg/murmur_browser.js'), 'export default async () => {};');
+  writeFileSync(join(fixture, 'browser/pkg/murmur_browser_bg.wasm'), Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
   const source = join(fixture, 'docs/user-guide.md');
   writeFileSync(source, `${readFileSync(source, 'utf8')}\n## Source continuity\n\nA newly authored guide paragraph.\n`);
   writeFileSync(join(fixture, 'plan.md'), 'Private working direction, not site content.');
@@ -81,6 +87,26 @@ test('license links use a readable text asset', () => {
   assert.match(read('LICENSE.txt'), /Permission is hereby granted/);
   assert.match(read('index.html'), /href="\.\/LICENSE\.txt"/);
   assert.match(read('docs/quick-start.html'), /href="\.\.\/LICENSE\.txt"/);
+});
+
+test('app builds include the existing probe, worker, and generated WASM with site navigation', () => {
+  execFileSync(process.execPath, [join(fixture, 'website/build.mjs'), '--with-app'], { stdio: 'pipe' });
+  assert.match(read('app/index.html'), /new Worker\('\.\/worker\.mjs'/);
+  assert.match(read('app/index.html'), /href="\.\.\/docs\/index\.html"/);
+  assert.equal(read('app/worker.mjs'), readFileSync(join(repository, 'browser/worker.mjs'), 'utf8'));
+  assert.deepEqual(readFileSync(join(output, 'app/pkg/murmur_browser_bg.wasm')),
+    Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
+});
+
+test('missing WASM bindings fail explicitly without replacing the working app', () => {
+  const previous = read('app/index.html');
+  rmSync(join(fixture, 'browser/pkg/murmur_browser_bg.wasm'));
+  assert.throws(() => execFileSync(process.execPath, [join(fixture, 'website/build.mjs'), '--with-app'], { stdio: 'pipe' }),
+    failure => {
+      assert.match(failure.stderr.toString(), /WASM bindings.*browser\/pkg/);
+      return true;
+    });
+  assert.equal(read('app/index.html'), previous);
 });
 
 test('a failed link check leaves the last successful preview intact', () => {

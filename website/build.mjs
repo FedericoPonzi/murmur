@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +7,14 @@ import { fileURLToPath } from 'node:url';
 const repository = fileURLToPath(new URL('../', import.meta.url));
 const website = join(repository, 'website');
 const generator = process.env.GENERETO || 'genereto';
+const withApp = process.argv.includes('--with-app');
+if (process.argv.slice(2).some(argument => argument !== '--with-app')) {
+  throw new Error('Usage: node website/build.mjs [--with-app]');
+}
+const browser = join(repository, 'browser');
+if (withApp && ['murmur_browser.js', 'murmur_browser_bg.wasm'].some(name => !existsSync(join(browser, 'pkg', name)))) {
+  throw new Error('WASM bindings missing in browser/pkg; build murmur-browser and run wasm-bindgen first.');
+}
 if (execFileSync(generator, ['--version'], { encoding: 'utf8' }).trim() !== 'genereto 0.4.4') {
   throw new Error('Use Genereto 0.4.4 to build this site.');
 }
@@ -62,6 +70,15 @@ try {
     writeFileSync(destination, html);
   }
   cpSync(join(repository, 'LICENSE'), join(assembled, 'LICENSE.txt'));
+  if (withApp) {
+    const probe = readFileSync(join(browser, 'index.html'), 'utf8');
+    if (!probe.includes('<!-- site_header -->')) throw new Error('Browser probe is missing its site header marker.');
+    const header = readFileSync(join(website, 'templates/main/header.html'), 'utf8')
+      .replaceAll("$GENERETO['root']", '..');
+    writeFileSync(join(assembled, 'app/index.html'), probe.replace('<!-- site_header -->', header));
+    cpSync(join(browser, 'worker.mjs'), join(assembled, 'app/worker.mjs'));
+    cpSync(join(browser, 'pkg'), join(assembled, 'app/pkg'), { recursive: true });
+  }
   renameSync(join(work, 'output'), join(work, 'flat'));
   renameSync(assembled, join(work, 'output'));
   run(['verify', '--project-path', work, 'assets', 'cover-image', 'date-mismatch',

@@ -50,7 +50,8 @@ for profile configuration, API details, testing, and build troubleshooting.
 ## Website preview
 
 The Genereto site hosts these guides and the current platform status.
-It is not yet the integrated browser application.
+It can include the developer browser probe at `/app/`; the full browser alpha
+is still in development.
 See [building the website](docs/dev-guide.md#website-preview).
 
 ## License

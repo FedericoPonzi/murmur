@@ -23,7 +23,9 @@ const { chromium } = require('playwright');
     response.writeHead(200, { 'Content-Type': type });
     fs.createReadStream(file).pipe(response);
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  if (!process.env.MURMUR_PREVIEW_URL) {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  }
   let browser, page;
   try {
     browser = await chromium.launch({ headless: true });
@@ -33,8 +35,13 @@ const { chromium } = require('playwright');
     page.on('console', message => {
       if (message.type() === 'error') log(`console: ${message.text()}`);
     });
-    const origin = `http://127.0.0.1:${server.address().port}`;
+    const origin = process.env.MURMUR_PREVIEW_URL || `http://127.0.0.1:${server.address().port}`;
     await page.goto(origin);
+    if (process.env.MURMUR_PREVIEW_URL) {
+      await page.getByRole('link', { name: 'Docs', exact: true }).click();
+      await page.getByRole('heading', { name: 'Documentation', exact: true }).waitFor();
+      await page.getByRole('link', { name: 'Current app', exact: true }).click();
+    }
     await page.locator('#start').click();
     const waitForStorage = async expected => {
       await page.waitForFunction(() => {
@@ -119,7 +126,7 @@ const { chromium } = require('playwright');
     throw error;
   } finally {
     if (browser) await browser.close();
-    await new Promise(resolve => server.close(resolve));
+    if (server.listening) await new Promise(resolve => server.close(resolve));
     console.log(`Artifacts: ${artifacts}`);
   }
 })().catch(() => { process.exitCode = 1; });

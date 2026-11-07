@@ -22,9 +22,24 @@ share the test RecordKey with the native bridge. Stop/reload/start and verify
 the same key and post. Retries must use the original text: this probe deliberately
 does not append posts or implement a second general-purpose publication engine.
 
+## Combined site and app preview
+
+After building the bindings above, install Genereto as described in the
+[developer guide](dev-guide.md#website-preview), then:
+
+```sh
+node website/build.mjs --with-app
+node website/serve.mjs
+```
+
+Open `http://localhost:8000/app/`. The landing page and hosted docs are on the
+same origin. The standalone server above remains available; use one server per
+port. Keeping the same origin preserves probe storage when moving from `/`
+to `/app/`; changing the hostname or port does not.
+
 The page uses HTTP; its embedded Veilid node connects directly over plain
-WebSockets, initially to `ws://bootstrap-v1.veilid.net:5150/ws`. Port 8000 serves
-assets only; the HTTP bridge does not sign or publish for the browser.
+WebSockets, initially to `ws://bootstrap-v1.veilid.net:5150/ws`. The preview
+server does not sign or publish for the browser.
 Network attachment or DHT failures are explicit and are not proof of success.
 Closing the tab stops its worker; background operation is not promised.
 
@@ -40,7 +55,8 @@ On an Android phone connected by USB with debugging enabled:
 adb reverse tcp:8000 tcp:8000
 ```
 
-Open `http://localhost:8000` in phone Chrome. This uses the laptop's HTTP server
+Open `http://localhost:8000` in phone Chrome (`/app/` for the combined preview).
+This uses the laptop's HTTP server
 without public hosting, certificates, or bypassing browser protections.
 HTTPS/WSS connectivity is a separate, deferred deployment test.
 
@@ -73,3 +89,5 @@ For full cross-reads, run the native server with disposable storage, publish
 a test post through its CLI, and set `MURMUR_BRIDGE_URL` to that server before
 running `node browser/smoke.cjs`. Each run preserves its log/screenshot in a
 separate temporary artifacts directory; test browser credentials are discarded.
+Set `MURMUR_PREVIEW_URL=http://localhost:8000/app/` to exercise the combined
+preview instead of the standalone page. The preview server must already run.

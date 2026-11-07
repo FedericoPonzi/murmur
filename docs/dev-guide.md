@@ -61,7 +61,7 @@ Install Node.js (18+) and [Genereto](https://github.com/FedericoPonzi/genereto)
 ```sh
 cargo install --git https://github.com/FedericoPonzi/genereto --rev 9a21250e4dcfb93bc7b03cb003619e621ae0b6c4 --locked
 node website/build.mjs
-node --test website/build.test.mjs
+node --test website/*.test.mjs
 python3 -m http.server 8000 --bind 127.0.0.1 --directory website/output
 ```
 
@@ -71,8 +71,26 @@ guide copies. Links are relative so the preview also works under a base path.
 Genereto's local checks run before output is replaced; no live external-link
 checks or deployment are required. Generated files are ignored.
 
-The `/app/` page describes the separate probe; app integration is the next
-increment. To use a Genereto binary outside `PATH`, set `GENERETO` to its path.
+To include the interactive probe, first build its WASM bindings following the
+[browser guide](browser-probe.md), then:
+
+```sh
+node website/build.mjs --with-app
+node website/serve.mjs
+```
+
+Open `/app/` on the same local origin. The server binds only to `127.0.0.1`,
+serves worker modules and WASM with their required MIME types, and disables
+asset caching during development. `PORT` overrides 8000.
+
+An optional `MURMUR_BRIDGE_URL=http://127.0.0.1:8080` enables a same-origin
+development proxy for `GET /api/me` and `GET /api/feed/{key}` only.
+It forwards no cookies, credentials, mutation requests, or redirects; reads are
+bounded. `/api/me` identifies the bridge operator, not the browser visitor.
+The probe still reads directly through its own Veilid node; the proxy is not
+a publishing service or automatic fallback. This is not a production server.
+
+To use a Genereto binary outside `PATH`, set `GENERETO` to its path.
 
 ## Identity and embedded node
 
