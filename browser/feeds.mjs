@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'murmur-follows-v1';
+export const STORAGE_KEY = 'murmur-follows-v1';
 export const FOLLOW_LIMIT = 50;
 export const READING_LIST_LIMIT = 128 * 1024;
 const MAX_SAVED = 2 * 1024 * 1024;

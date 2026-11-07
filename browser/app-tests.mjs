@@ -165,7 +165,7 @@ try {
   assert(element('timeline').querySelectorAll('article').length === 1, 'Refresh duplicated cached posts.');
   assert(element('unread-count')?.textContent.includes('1 unread'), 'Unread posts were not counted.');
   element('mark-read').click();
-  assert(element('unread-count').textContent.includes('0 unread'), 'Explicit read marker did not clear the badge.');
+  await wait(() => element('unread-count').textContent.includes('0 unread'));
   element('share-feed').click();
   await wait(() => frame.contentWindow.copiedText);
   assert(new URL(frame.contentWindow.copiedText).searchParams.get('feed') === 'VLD0:remote', 'Copied link points to a different feed.');
@@ -189,11 +189,59 @@ try {
   await wait(() => element('feed-cards').textContent.includes('guest-readable'));
   remoteItem().querySelector('[data-action="mute"]').click();
   await wait(() => element('timeline').textContent.includes('guest-readable'));
+  let releaseMute, muteLocked = false;
+  const muteLock = navigator.locks.request('murmur-reading-list', async () => {
+    muteLocked = true;
+    await new Promise(resolve => { releaseMute = resolve; });
+  });
+  await wait(() => muteLocked);
+  const { muteFeed } = await import('./feeds.mjs');
+  const otherMute = navigator.locks.request('murmur-reading-list', () => muteFeed(localStorage, 'VLD0:remote', true));
+  remoteItem().querySelector('[data-action="mute"]').click();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  releaseMute();
+  await Promise.all([muteLock, otherMute]);
+  await wait(() => !element('follow').disabled);
+  assert(remoteItem().textContent.includes('Unmute'), 'Two queued Mute actions undid each other.');
+  remoteItem().querySelector('[data-action="mute"]').click();
+  await wait(() => element('timeline').textContent.includes('guest-readable'));
+  const acrossTabs = JSON.parse(frame.contentWindow.localStorage.getItem('murmur-follows-v1'));
+  acrossTabs.follows.push('VLD0:other-tab');
+  localStorage.setItem('murmur-follows-v1', JSON.stringify(acrossTabs));
+  await wait(() => element('follow-list').textContent.includes('VLD0:other-tab'));
+  let release, locked = false;
+  const held = navigator.locks.request('murmur-reading-list', async () => {
+    locked = true;
+    await new Promise(resolve => { release = resolve; });
+  });
+  await wait(() => locked);
+  element('key').value = 'VLD0:queued';
+  element('follow').click();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  try {
+    assert(!JSON.parse(localStorage.getItem('murmur-follows-v1')).follows.includes('VLD0:queued'),
+      'Preference mutation ignored another tab lock.');
+  } finally { release(); await held; }
+  await wait(() => element('follow-list').textContent.includes('VLD0:queued'));
   Array.from(element('follow-list').querySelectorAll('li')).find(item => item.textContent.includes('VLD0:remote'))
     .querySelector('button:last-child').click();
   await wait(() => !element('follow-list').textContent.includes('VLD0:remote'));
+  let releaseCancelled, cancellationLocked = false;
+  const cancelledLock = navigator.locks.request('murmur-reading-list', async () => {
+    cancellationLocked = true;
+    await new Promise(resolve => { releaseCancelled = resolve; });
+  });
+  await wait(() => cancellationLocked);
+  element('key').value = 'VLD0:cancelled';
+  element('follow').click();
+  await new Promise(resolve => setTimeout(resolve, 50));
   element('stop-reader').click();
   await wait(() => !element('auth').hidden);
+  releaseCancelled();
+  await cancelledLock;
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert(!JSON.parse(localStorage.getItem('murmur-follows-v1')).follows.includes('VLD0:cancelled'),
+    'A stopped session still changed reading preferences.');
   frame.contentWindow.localStorage.setItem('murmur-follows-v1', '{');
   element('browse-start').click();
   await wait(() => !element('session').hidden);

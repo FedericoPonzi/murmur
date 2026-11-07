@@ -59,6 +59,9 @@ author credentials, drafts or cached posts and cannot replace an identity backup
 direct reads. **Unmute** shows it again. Muted posts are not marked read by the
 Home read-marker button. Mutes are unencrypted local preferences and travel in
 reading-list exports; importing keeps existing mutes too.
+Reading-list changes are serialized across tabs on this origin. Other active
+tabs update their follows, mute preferences and cached timeline when these
+preferences change. This does not synchronize different devices or publishers.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.

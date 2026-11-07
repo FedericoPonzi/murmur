@@ -1,5 +1,5 @@
 import { loadFollows, addFollow, removeFollow, resetFollows, saveFeed, cachedFeeds, timeline, markRead, feedLink, sharedFeed,
-  exportReadingList, decodeReadingList, importReadingList, READING_LIST_LIMIT, muteFeed, mutedFeeds } from './feeds.mjs';
+  exportReadingList, decodeReadingList, importReadingList, READING_LIST_LIMIT, muteFeed, mutedFeeds, STORAGE_KEY } from './feeds.mjs';
 
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
@@ -9,6 +9,13 @@ let refreshTask;
 let pendingFeed, unreadCount = 0;
 const feedProgress = new Map();
 const requests = new Map();
+const mutateReading = operation => {
+  const run = generation;
+  return navigator.locks.request('murmur-reading-list', () => {
+    if (run !== generation || !active) throw new Error('Session ended before preferences could be saved.');
+    return operation(localStorage);
+  });
+};
 const downloadFile = (name, text) => {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   const link = document.createElement('a');
@@ -112,25 +119,13 @@ const renderFollows = follows => {
     mute.dataset.action = 'mute';
     mute.textContent = muted.includes(key) ? 'Unmute' : 'Mute';
     mute.setAttribute('aria-label', `${mute.textContent} ${key}`);
-    mute.onclick = () => {
-      try {
-        renderFollows(muteFeed(localStorage, key, !muted.includes(key)));
-        $('follow-status').textContent = 'Home preferences saved. Muted feeds can still be read directly.';
-      } catch (failure) { $('follow-status').textContent = `Could not save mute: ${failure.message}`; }
-    };
+    mute.onclick = () => changeReading(storage => muteFeed(storage, key, !muted.includes(key)),
+      'Home preferences saved. Muted feeds can still be read directly.');
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.textContent = 'Unfollow';
     remove.setAttribute('aria-label', `Unfollow ${key}`);
-    remove.onclick = () => {
-      try {
-        renderFollows(removeFollow(localStorage, key));
-        $('follow-status').textContent = 'Feed removed from your follows.';
-      } catch (failure) {
-        loadFollowView();
-        $('follow-status').textContent = `Could not remove follow: ${failure.message}`;
-      }
-    };
+    remove.onclick = () => changeReading(storage => removeFollow(storage, key), 'Feed removed from your follows.');
     item.append(label, read, mute, remove);
     return item;
   }));
@@ -184,15 +179,27 @@ const loadFollowView = () => {
     $('reset-follows').hidden = false;
   }
 };
-$('mark-read').onclick = () => {
+window.addEventListener('storage', event => {
+  if (active && event.storageArea === localStorage && (event.key === STORAGE_KEY || event.key === null)) loadFollowView();
+});
+const changeReading = async (operation, success) => {
   if (!active || busy) return;
+  const run = generation;
+  busy = true;
+  controls();
   try {
-    markRead(localStorage);
-    renderTimeline();
-    controls();
-    $('follow-status').textContent = 'Cached posts marked as read.';
-  } catch (failure) { $('follow-status').textContent = `Could not save read state: ${failure.message}`; }
+    await mutateReading(operation);
+    if (run !== generation) return;
+    renderFollows(loadFollows(localStorage));
+    $('follow-status').textContent = success;
+  } catch (failure) {
+    if (run === generation) {
+      loadFollowView();
+      $('follow-status').textContent = `Reading preferences not saved: ${failure.message}`;
+    }
+  } finally { if (run === generation) { busy = false; controls(); } }
 };
+$('mark-read').onclick = () => changeReading(markRead, 'Visible cached posts marked as read.');
 const copyFeedLink = async key => {
   const run = generation;
   try {
@@ -228,7 +235,9 @@ $('reading-form').onsubmit = async event => {
       if (await call('check_key', key) !== key) throw new Error('Reading list contains a noncanonical feed key.');
     }
     if (run !== generation) return;
-    renderFollows(importReadingList(localStorage, text));
+    const follows = await mutateReading(storage => importReadingList(storage, text));
+    if (run !== generation) return;
+    renderFollows(follows);
     $('follow-status').textContent = 'Reading list merged. Existing follows and cached reads were kept.';
     $('reading-file').value = '';
   } catch (failure) {
@@ -243,7 +252,9 @@ $('follow').onclick = async () => {
   try {
     const key = await call('check_key', $('key').value);
     if (run !== generation) return;
-    renderFollows(addFollow(localStorage, key));
+    const follows = await mutateReading(storage => addFollow(storage, key));
+    if (run !== generation) return;
+    renderFollows(follows);
     $('key').value = key;
     $('follow-status').textContent = 'Feed is in your follows.';
   } catch (failure) {
@@ -255,10 +266,7 @@ $('follow').onclick = async () => {
 };
 $('reset-follows').onclick = () => {
   if (!window.confirm('Reset follows and cached public feeds on this browser? Your author identity will not be changed.')) return;
-  try {
-    renderFollows(resetFollows(localStorage));
-    $('follow-status').textContent = 'Saved follows reset. Your author identity is unchanged.';
-  } catch (failure) { $('follow-status').textContent = `Could not reset follows: ${failure.message}`; }
+  changeReading(resetFollows, 'Saved follows reset. Your author identity is unchanged.');
 };
 $('refresh-timeline').onclick = async () => {
   if (!active || !attached || busy) return;
@@ -277,7 +285,8 @@ $('refresh-timeline').onclick = async () => {
       try {
         const feed = await call('read', key);
         if (run !== generation) return;
-        saveFeed(localStorage, key, feed, Date.now());
+        await mutateReading(storage => saveFeed(storage, key, feed, Date.now()));
+        if (run !== generation) return;
         feedProgress.delete(key);
         succeeded++;
       } catch (failure) {
