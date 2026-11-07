@@ -29,6 +29,10 @@ RecordKey. **Copy RecordKey** lets another reader find the same feed.
 Lock or reload the page, then unlock with the same passphrase to restore the
 same key and posts. An uncertain publication keeps its original text for retry;
 confirmation releases the composer without advancing the index twice.
+The app monitors attachment after connecting. Going offline disables network
+actions without discarding saved work. **Retry connection** restarts networking;
+reconnecting checks an interrupted publication but never sends it automatically.
+If it is not already confirmed, retry only the preserved text.
 
 ## Combined site and app preview
 

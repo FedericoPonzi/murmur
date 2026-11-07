@@ -14,6 +14,7 @@ function installWorker() {
   window.Worker = class {
     postMessage({ id, action, value }) {
       value = structuredClone(value);
+      if (action === 'publish') window.publishCalls = (window.publishCalls ?? 0) + 1;
       if (action === 'draft' && !window.failDraft) {
         identity.draft = window.lastSavedDraft = value;
       }
@@ -73,6 +74,12 @@ try {
   element('publish').click();
   await wait(() => frame.contentWindow.lastSavedDraft === latest);
   assert(!element('content').readOnly, 'A pre-publication failure froze the draft.');
+  frame.contentWindow.networkReady = false;
+  await wait(() => element('read').disabled);
+  assert(element('content').value === latest, 'Going offline erased the draft.');
+  frame.contentWindow.networkReady = true;
+  await wait(() => !element('read').disabled);
+  assert(frame.contentWindow.publishCalls === 1, 'Reconnection resent the post automatically.');
   assert(element('authored-history').textContent.includes('Existing <b>literal</b> post'), 'Local history was not rendered.');
   assert(!element('authored-history').querySelector('b'), 'Post text was interpreted as markup.');
   element('profile-settings').open = true;

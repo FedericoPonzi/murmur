@@ -186,6 +186,35 @@ pub async fn commit_post(record: &impl RecordIo, metadata: &Metadata, post: &Pos
     record.set(0, encode(&updated)?).await
 }
 
+pub async fn pending_confirmed(
+    record: &impl RecordIo,
+    metadata: &Metadata,
+    post: &Post,
+) -> Result<bool> {
+    validate_content(&post.content)?;
+    if metadata
+        .latest_post_index
+        .is_some_and(|latest| latest >= post.index)
+    {
+        let stored = record
+            .get(post_subkey(post.index))
+            .await?
+            .map(|bytes| decode::<Post>(&bytes))
+            .transpose()?;
+        if stored.as_ref() != Some(post) {
+            return Err(
+                "Saved publication no longer matches its retained slot; manual recovery required"
+                    .into(),
+            );
+        }
+        return Ok(true);
+    }
+    if next_index(metadata.latest_post_index)? != post.index {
+        return Err("Pending publication is out of sequence; manual recovery required".into());
+    }
+    Ok(false)
+}
+
 pub async fn deadline<T>(future: impl Future<Output = Result<T>>, seconds: u32) -> Result<T> {
     veilid_core::tools::timeout(seconds.saturating_mul(1000), future)
         .await
@@ -374,6 +403,37 @@ mod tests {
             .await
             .is_err());
         assert_eq!(read_metadata(&record).await.unwrap(), updated);
+    }
+
+    #[tokio::test]
+    async fn pending_confirmation_checks_retained_values_without_writing() {
+        let record = FakeRecord::new(&metadata(Some(3)));
+        record
+            .values
+            .lock()
+            .unwrap()
+            .insert(post_subkey(2), encode(&post(2)).unwrap());
+        assert!(pending_confirmed(&record, &metadata(Some(3)), &post(2))
+            .await
+            .unwrap());
+        assert!(!pending_confirmed(&record, &metadata(Some(3)), &post(4))
+            .await
+            .unwrap());
+        assert!(pending_confirmed(&record, &metadata(Some(3)), &post(1))
+            .await
+            .is_err());
+        assert!(pending_confirmed(&record, &metadata(Some(3)), &post(5))
+            .await
+            .is_err());
+        record
+            .values
+            .lock()
+            .unwrap()
+            .insert(post_subkey(2), encode(&post(102)).unwrap());
+        assert!(pending_confirmed(&record, &metadata(Some(102)), &post(2))
+            .await
+            .is_err());
+        assert!(record.writes.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -97,7 +97,7 @@ if (typeof self !== 'undefined') {
           if (!node) throw new Error('Start the node first.');
           if (['backup', 'verify_backup'].includes(data.action) && typeof passphrase !== 'string') throw new Error('Passphrase must be a string.');
           if (data.action === 'verify_backup' && typeof data.value?.backup !== 'string') throw new Error('Provide an encrypted backup.');
-          const methods = { status: 'status', profile: 'local_identity', identity: 'identity_key', reconcile: 'reconcile_pending', publish: 'publish_post', read: 'read_feed', backup: 'export_backup', verify_backup: 'verify_backup', draft: 'save_draft', update_profile: 'update_profile',
+          const methods = { status: 'status', profile: 'local_identity', identity: 'identity_key', reconcile: 'reconcile_pending', publish: 'publish_post', read: 'read_feed', backup: 'export_backup', verify_backup: 'verify_backup', draft: 'save_draft', update_profile: 'update_profile', reconnect: 'reconnect',
             test_seed: 'test_seed_identity', test_storage: 'test_storage' };
           const method = methods[data.action];
           if (!Object.hasOwn(methods, data.action) || typeof node[method] !== 'function') throw new Error('Unknown probe command.');

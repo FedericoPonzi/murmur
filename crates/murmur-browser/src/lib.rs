@@ -187,23 +187,12 @@ pub async fn restore_profile_node(
                 };
                 let metadata = murmur_core::read_metadata(&record).await?;
                 if let Some(pending) = &credentials.pending {
-                    if metadata
-                        .latest_post_index
-                        .is_some_and(|latest| latest >= pending.index)
-                    {
-                        let stored = record
-                            .get(murmur_model::post_subkey(pending.index))
-                            .await?
-                            .ok_or("Pending publication cannot be verified from this feed")?;
-                        let stored: Post = murmur_core::decode(&stored)?;
-                        if &stored != pending {
-                            return Err("Pending publication conflicts with this feed".into());
-                        }
-                        murmur_core::credentials::retain_post(&mut credentials.history, stored)?;
+                    if murmur_core::pending_confirmed(&record, &metadata, pending).await? {
+                        murmur_core::credentials::retain_post(
+                            &mut credentials.history,
+                            pending.clone(),
+                        )?;
                         credentials.pending = None;
-                    } else if murmur_model::next_index(metadata.latest_post_index)? != pending.index
-                    {
-                        return Err("Pending publication is out of sequence".into());
                     }
                 }
                 Ok(metadata)
@@ -360,6 +349,11 @@ impl BrowserNode {
         .map_err(|_| error("JSON encoding failed"))
     }
 
+    pub async fn reconnect(&self) -> Result<()> {
+        self.api.detach().await.map_err(api_error)?;
+        self.api.attach().await.map_err(api_error)
+    }
+
     pub async fn save_draft(&mut self, content: String) -> Result<()> {
         if content.chars().count() > 4000 {
             return Err(error(
@@ -470,10 +464,14 @@ impl BrowserNode {
             let metadata = murmur_core::read_metadata(&record)
                 .await
                 .map_err(core_error)?;
-            if metadata.latest_post_index == Some(post.index) {
-                murmur_core::commit_post(&record, &metadata, post)
-                    .await
-                    .map_err(core_error)?;
+            if murmur_core::pending_confirmed(&record, &metadata, post)
+                .await
+                .map_err(core_error)?
+            {
+                self.identity
+                    .as_mut()
+                    .ok_or_else(|| error("No identity"))?
+                    .profile = Some(metadata);
                 self.clear_pending().await?;
             }
         }
@@ -513,14 +511,24 @@ impl BrowserNode {
                 content,
             },
         };
+        let confirmed = identity.post.is_some()
+            && murmur_core::pending_confirmed(&record, &metadata, &post)
+                .await
+                .map_err(core_error)?;
+        if !confirmed {
+            self.identity
+                .as_mut()
+                .ok_or_else(|| error("No identity"))?
+                .post = Some(post.clone());
+            self.save_identity().await?;
+            murmur_core::commit_post(&record, &metadata, &post)
+                .await
+                .map_err(core_error)?;
+        }
         self.identity
             .as_mut()
             .ok_or_else(|| error("No identity"))?
-            .post = Some(post.clone());
-        self.save_identity().await?;
-        murmur_core::commit_post(&record, &metadata, &post)
-            .await
-            .map_err(core_error)?;
+            .profile = Some(metadata);
         self.clear_pending().await?;
         String::from_utf8(encode(&post)?).map_err(|_| error("JSON encoding failed"))
     }

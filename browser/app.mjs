@@ -22,9 +22,12 @@ const postCard = (post, author) => {
   return article;
 };
 const showIdentity = identity => {
+  const previous = publicIdentity;
+  if (!previous || $('edit-name').value === previous.author_name) $('edit-name').value = identity.author_name;
+  if (!previous || $('edit-bio').value === previous.bio) $('edit-bio').value = identity.bio;
   publicIdentity = identity;
-  $('profile-name').textContent = $('edit-name').value = identity.author_name;
-  $('profile-bio').textContent = $('edit-bio').value = identity.bio;
+  $('profile-name').textContent = identity.author_name;
+  $('profile-bio').textContent = identity.bio;
   $('own-key').textContent = identity.record_key;
   const posts = [...(identity.history ?? [])].reverse();
   $('authored-history').replaceChildren(...posts.map(post => postCard(post, identity.author_name)));
@@ -52,6 +55,8 @@ const controls = () => {
   for (const id of ['verify-fields', 'verify-backup']) $(id).disabled = !active || busy;
   for (const id of ['profile-fields', 'save-profile']) $(id).disabled = !active || !attached || busy;
   $('copy-key').disabled = !active;
+  $('reconnect').disabled = !active || attached || busy;
+  $('publish').textContent = $('content').readOnly ? 'Retry saved post' : 'Publish post';
   $('publish').disabled = $('read').disabled = !active || !attached || busy;
   const length = Array.from($('content').value).length;
   $('content-count').textContent = `${length} / 280`;
@@ -115,7 +120,9 @@ const makeWorker = () => {
 const call = (action, value, timeout = 180000) => new Promise((resolve, reject) => {
   const id = ++sequence;
   const timer = setTimeout(() => {
-    finish('Operation timed out. Identity locked; a publication may be uncertain. Unlock and retry only the saved text.');
+    finish(action === 'publish'
+      ? 'Publication confirmation timed out. Identity locked; unlock and retry only the saved text.'
+      : 'Operation timed out. Identity locked; unlock to retry.');
   }, timeout);
   requests.set(id, { resolve, reject, timer });
   try { worker.postMessage({ id, action, value, bootstrap: $('bootstrap').value }); }
@@ -126,32 +133,48 @@ const call = (action, value, timeout = 180000) => new Promise((resolve, reject) 
   }
 });
 const watchAttachment = run => {
-  const deadline = Date.now() + 120000;
-  let checking = false;
+  clearInterval(polling);
+  let deadline = Date.now() + 120000, checking = false, paused = false, expired = false;
   polling = setInterval(async () => {
-    if (checking) return;
+    if (checking || paused || busy || !active) return;
     checking = true;
     try {
       const state = await call('status');
-      if (run !== generation) return;
-      if (state.ready) {
-        clearInterval(polling);
+      if (run !== generation || busy) return;
+      if (state.ready && !attached) {
         await call('identity');
         const identity = await call('reconcile');
-        if (run !== generation) return;
+        if (run !== generation || busy) return;
         if (identity.probe_post) $('content').value = identity.probe_post.content;
         else if ($('content').readOnly) $('content').value = '';
         $('content').readOnly = !!identity.probe_post;
         showIdentity(identity);
         attached = true;
+        expired = false;
         controls();
-        $('status').textContent = 'Connected to Veilid. Ready to publish and read.';
-      } else if (Date.now() > deadline) {
-        clearInterval(polling);
-        $('status').textContent = 'Veilid attachment timed out. Your identity is saved; lock and unlock to retry.';
+        $('status').textContent = identity.probe_post
+          ? 'Connected. A publication needs confirmation; retry only its saved text.'
+          : 'Connected to Veilid. Ready to publish and read.';
+      } else if (!state.ready) {
+        if (attached) {
+          attached = false;
+          deadline = Date.now() + 120000;
+          expired = false;
+          controls();
+          $('status').textContent = 'Offline. Your saved work stays local; waiting to reconnect.';
+        }
+        if (!expired && Date.now() > deadline) {
+          expired = true;
+          $('status').textContent = 'Still offline. Saved work stays local. Use Retry connection to restart networking.';
+        }
       }
     } catch (failure) {
-      if (run === generation) finish(failure.message);
+      if (run === generation) {
+        paused = true;
+        attached = false;
+        controls();
+        $('status').textContent = `Connection check failed: ${failure.message}. Use Retry connection.`;
+      }
     } finally { checking = false; }
   }, 1000);
 };
@@ -255,6 +278,20 @@ $('copy-key').onclick = async () => {
   } catch (failure) {
     if (run === generation) $('status').textContent = `Copy failed: ${failure.message}. Select the RecordKey to copy it manually.`;
   }
+};
+$('reconnect').onclick = async () => {
+  if (!active || busy) return;
+  const run = generation;
+  busy = true;
+  attached = false;
+  controls();
+  $('status').textContent = 'Restarting network connection. Saved work is unchanged.';
+  try {
+    await call('reconnect');
+    if (run === generation) watchAttachment(run);
+  } catch (failure) {
+    if (run === generation) $('status').textContent = `Reconnect failed: ${failure.message}`;
+  } finally { if (run === generation) { busy = false; controls(); } }
 };
 const readBackup = async id => {
   const file = $(id).files[0];
