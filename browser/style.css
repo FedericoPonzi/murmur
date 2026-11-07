@@ -159,6 +159,10 @@ main:has(.landing) { max-width: none; padding: 0; }
 .post-card { padding: 1.1rem 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .post-card strong, .post-card time { display: block; }
 .session-layout.reader-session { grid-template-columns: minmax(0, 1fr); }
+#follow-list { list-style: none; padding: 0; }
+#follow-list li { display: flex; align-items: center; gap: .75rem; padding: .6rem 0; border-top: 1px solid var(--border); }
+#follow-list span { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: .8rem; }
+#follow-list button { width: auto; margin: 0; padding: .5rem .75rem; font-size: .8rem; }
 .post-card time, #content-count, #draft-status { font-size: .8rem; color: var(--muted); }
 .post-card p { white-space: pre-wrap; margin: .65rem 0; }
 #content-count, #draft-status { display: block; margin-top: .5rem; }

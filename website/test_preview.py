@@ -60,7 +60,7 @@ class BuildTests(unittest.TestCase):
             source, target = REPOSITORY / name, self.root / name
             shutil.copytree(source, target) if source.is_dir() else shutil.copy2(source, target)
         (self.root / "browser/pkg").mkdir(parents=True)
-        for name in ("index.html", "app.mjs", "worker.mjs", "style.css", "favicon.svg"):
+        for name in ("index.html", "app.mjs", "worker.mjs", "feeds.mjs", "style.css", "favicon.svg"):
             shutil.copy2(REPOSITORY / "browser" / name, self.root / "browser" / name)
         (self.root / "browser/pkg/murmur_browser.js").write_text("export default async () => {};")
         (self.root / "browser/pkg/murmur_browser_bg.wasm").write_bytes(WASM)
@@ -110,6 +110,7 @@ class BuildTests(unittest.TestCase):
         self.assertEqual((self.output / "app/pkg/murmur_browser_bg.wasm").read_bytes(), WASM)
         self.assertEqual(self.read("app/worker.mjs"), (REPOSITORY / "browser/worker.mjs").read_text())
         self.assertEqual(self.read("app/app.mjs"), (REPOSITORY / "browser/app.mjs").read_text())
+        self.assertEqual(self.read("app/feeds.mjs"), (REPOSITORY / "browser/feeds.mjs").read_text())
         self.assertIn("new Worker('./worker.mjs'", self.read("app/app.mjs"))
 
     def test_platforms_are_planned_without_fake_downloads(self):

@@ -8,6 +8,7 @@ const wait = async condition => {
 };
 function installWorker() {
   window.networkReady = false;
+  localStorage.setItem('murmur-follows-v1', JSON.stringify({ version: 1, follows: ['VLD0:existing'] }));
   window.authorStarts = 0;
   window.confirm = () => false;
   const identity = { record_key: 'VLD0:disposable', author_name: 'Disposable author', bio: '', probe_post: null,
@@ -30,6 +31,7 @@ function installWorker() {
         verify_backup: identity.record_key,
         profile: identity, update_profile: identity,
         read_only: { starts: 1, reader: true, protected: false, identity: null },
+        check_key: value,
         read: { record_key: 'VLD0:remote', metadata: { author_name: 'Remote <b>author</b>', bio: '' },
           posts: [{ index: 0, timestamp: 1, content: 'A guest-readable <b>post</b>' }] },
       };
@@ -60,6 +62,7 @@ try {
   element('acknowledge').checked = true;
   element('create-form').requestSubmit();
   await wait(() => !element('session').hidden);
+  assert(element('follow-list').textContent.includes('VLD0:existing'), 'Author session did not load saved follows.');
   frame.contentWindow.failDraft = true;
   element('content').value = 'An unsaved draft before connecting';
   element('content').dispatchEvent(new Event('input'));
@@ -141,8 +144,22 @@ try {
   await wait(() => element('feed-cards').textContent.includes('guest-readable'));
   assert(!element('feed-cards').querySelector('b'), 'Guest content was interpreted as markup.');
   assert(frame.contentWindow.authorStarts === authorStarts, 'Guest started an author session.');
+  assert(element('follow'), 'Missing saved follows.');
+  element('follow').click();
+  await wait(() => element('follow-list').textContent.includes('VLD0:remote'));
+  element('follow').click();
+  await wait(() => !element('follow').disabled);
+  assert(element('follow-list').querySelectorAll('li').length === 2, 'Duplicate follow was saved.');
+  Array.from(element('follow-list').querySelectorAll('li')).find(item => item.textContent.includes('VLD0:remote'))
+    .querySelector('button:last-child').click();
+  await wait(() => !element('follow-list').textContent.includes('VLD0:remote'));
   element('stop-reader').click();
   await wait(() => !element('auth').hidden);
+  frame.contentWindow.localStorage.setItem('murmur-follows-v1', '{');
+  element('browse-start').click();
+  await wait(() => !element('session').hidden);
+  assert(element('follow-list').children.length === 0, 'Unreadable follows left an old list visible.');
+  assert(!element('reset-follows').hidden, 'Unreadable follows cannot be reset explicitly.');
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.message}`;

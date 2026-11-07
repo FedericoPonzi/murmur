@@ -16,6 +16,10 @@ try {
   const state = await node.call('read_only');
   assert(state.reader === true && !state.protected && state.identity === null, 'Guest loaded an author.');
   assert(await node.call('profile') === null, 'An author escaped into guest mode.');
+  assert(await node.call('check_key', author.identity.record_key) === author.identity.record_key, 'Complete feed key was not preserved.');
+  for (const invalid of ['invalid-key', 'VLD0::', 'VLD0:AA:AA']) {
+    await rejects(() => node.call('check_key', invalid));
+  }
   for (const action of ['identity', 'publish', 'draft', 'update_profile', 'backup', 'test_seed']) {
     await rejects(() => node.call(action, 'Must not create or use a writer.'));
   }

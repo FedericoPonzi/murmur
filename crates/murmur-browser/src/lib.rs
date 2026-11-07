@@ -69,6 +69,24 @@ fn error(message: &str) -> JsValue {
     JsValue::from_str(message)
 }
 
+fn feed_key(value: &str) -> Result<RecordKey> {
+    let key: RecordKey = value
+        .trim()
+        .parse()
+        .map_err(|_| error("Invalid Veilid RecordKey"))?;
+    if key.kind() != CRYPTO_KIND_VLD0
+        || key.opaque().ref_value().len() != 32
+        || key
+            .encryption_key()
+            .is_none_or(|secret| secret.ref_value().len() != 32)
+    {
+        return Err(error(
+            "Use a complete 32-byte VLD0 RecordKey and encryption key",
+        ));
+    }
+    Ok(key)
+}
+
 fn api_error(failure: VeilidAPIError) -> JsValue {
     core_error(failure.into())
 }
@@ -374,6 +392,10 @@ impl BrowserNode {
         self.api.attach().await.map_err(api_error)
     }
 
+    pub fn check_key(&self, value: String) -> Result<String> {
+        feed_key(&value).map(|key| key.to_string())
+    }
+
     pub async fn save_draft(&mut self, content: String) -> Result<()> {
         if content.chars().count() > 4000 {
             return Err(error(
@@ -595,7 +617,7 @@ impl BrowserNode {
     }
 
     pub async fn read_feed(&self, key: String) -> Result<String> {
-        let key: RecordKey = key.parse().map_err(|_| error("Invalid Veilid RecordKey"))?;
+        let key = feed_key(&key)?;
         let feed = murmur_core::read_feed(
             &self.context,
             self.identity.as_ref().map(|identity| &identity.key),

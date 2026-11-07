@@ -32,6 +32,9 @@ confirmation releases the composer without advancing the index twice.
 To read without creating or unlocking an author, choose **Read without an
 identity** and paste a complete RecordKey. This uses a separate read-only node;
 it cannot initialize a feed or publish. **Stop reading** ends that session.
+Use **Follow this feed** to save a complete RecordKey. **Read** beside a saved
+feed opens it; **Unfollow** removes it. Up to 50 follows survive reload on this
+origin. The list is not passphrase-protected or included in identity backups.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.

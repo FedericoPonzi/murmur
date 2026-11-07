@@ -249,6 +249,13 @@ def check(storage_only=False):
             wait.until(lambda _: '"posts"' in text("feed"))
             assert [post["index"] for post in json.loads(text("feed"))["posts"]] == [2, 1, 0]
             assert not element("publish").is_enabled()
+            click("follow")
+            wait.until(lambda _: key in text("follow-list"))
+            driver.refresh()
+            wait.until(lambda _: element("browse-start").is_enabled())
+            click("browse-start")
+            storage(2)
+            assert key in text("follow-list")
             click("stop-reader")
             wait.until(lambda _: text("status") == "Reader stopped.")
             element("unlock-passphrase").send_keys(passphrase)

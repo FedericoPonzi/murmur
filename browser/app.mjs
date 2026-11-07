@@ -1,3 +1,5 @@
+import { loadFollows, addFollow, removeFollow, resetFollows } from './feeds.mjs';
+
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
 let active = false, attached = false, busy = false, authenticating = true, mode = 'create';
@@ -49,6 +51,11 @@ const showFeed = result => {
   }
 };
 const controls = () => {
+  $('follow').disabled = !active || busy;
+  $('reset-follows').disabled = busy;
+  for (const button of $('follow-list').querySelectorAll('button')) {
+    button.disabled = !active || busy || (button.dataset.action === 'read' && !attached);
+  }
   for (const id of ['create-fields', 'unlock-fields', 'restore-fields', 'start', 'unlock-start',
     'restore-start', 'show-create', 'show-unlock', 'show-restore', 'restore-back', 'browse-start']) $(id).disabled = authenticating || active;
   for (const id of ['backup-fields', 'download-backup']) $(id).disabled = !active || guest || !attached || busy;
@@ -67,6 +74,71 @@ const controls = () => {
   $('stop').disabled = !active || busy;
   $('bootstrap').disabled = active || authenticating;
 };
+const renderFollows = follows => {
+  $('follow-list').replaceChildren(...follows.map(key => {
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = key;
+    const read = document.createElement('button');
+    read.type = 'button';
+    read.textContent = 'Read';
+    read.dataset.action = 'read';
+    read.setAttribute('aria-label', `Read feed ${key}`);
+    read.onclick = () => { $('key').value = key; $('read').click(); };
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Unfollow';
+    remove.setAttribute('aria-label', `Unfollow ${key}`);
+    remove.onclick = () => {
+      try {
+        renderFollows(removeFollow(localStorage, key));
+        $('follow-status').textContent = 'Feed removed from your follows.';
+      } catch (failure) {
+        loadFollowView();
+        $('follow-status').textContent = `Could not remove follow: ${failure.message}`;
+      }
+    };
+    item.append(label, read, remove);
+    return item;
+  }));
+  $('reset-follows').hidden = true;
+  controls();
+};
+const loadFollowView = () => {
+  $('follow-list').replaceChildren();
+  $('follow-status').textContent = '';
+  $('reset-follows').hidden = true;
+  try { renderFollows(loadFollows(localStorage)); }
+  catch (failure) {
+    $('follow-status').textContent = failure.message;
+    $('reset-follows').hidden = false;
+  }
+};
+$('follow').onclick = async () => {
+  if (!active || busy) return;
+  const run = generation;
+  busy = true;
+  controls();
+  try {
+    const key = await call('check_key', $('key').value);
+    if (run !== generation) return;
+    renderFollows(addFollow(localStorage, key));
+    $('key').value = key;
+    $('follow-status').textContent = 'Feed is in your follows.';
+  } catch (failure) {
+    if (run === generation) {
+      loadFollowView();
+      $('follow-status').textContent = `Could not save follow: ${failure.message}`;
+    }
+  } finally { if (run === generation) { busy = false; controls(); } }
+};
+$('reset-follows').onclick = () => {
+  if (!window.confirm('Reset only saved follows on this browser? Your author identity will not be changed.')) return;
+  try {
+    renderFollows(resetFollows(localStorage));
+    $('follow-status').textContent = 'Saved follows reset. Your author identity is unchanged.';
+  } catch (failure) { $('follow-status').textContent = `Could not reset follows: ${failure.message}`; }
+};
 const showMode = next => {
   mode = next;
   clearPassphrases();
@@ -75,6 +147,7 @@ const showMode = next => {
   $('session').classList.toggle('reader-session', guest);
   for (const id of ['identity-panel', 'author-tools', 'history-tools']) $(id).hidden = guest;
   $('reader-tools').hidden = !guest;
+  if (active) loadFollowView();
   $('create-panel').hidden = mode !== 'create';
   $('unlock-panel').hidden = mode !== 'unlock';
   $('restore-panel').hidden = mode !== 'restore';
@@ -95,7 +168,8 @@ const finish = message => {
   requests.clear();
   active = attached = busy = authenticating = false;
   guest = false;
-  for (const id of ['profile-name', 'profile-bio', 'own-key', 'feed', 'feed-cards', 'authored-history', 'draft-status', 'storage']) $(id).textContent = '';
+  for (const id of ['profile-name', 'profile-bio', 'own-key', 'feed', 'feed-cards', 'authored-history', 'draft-status', 'storage', 'follow-list', 'follow-status']) $(id).textContent = '';
+  $('reset-follows').hidden = true;
   publicIdentity = undefined;
   $('key').value = $('content').value = '';
   $('content').readOnly = false;

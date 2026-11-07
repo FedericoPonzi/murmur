@@ -82,7 +82,7 @@ def build(repository, with_app=False):
                 probe.replace('href="./style.css"', 'href="../style.css"')
                      .replace('href="./favicon.svg"', 'href="../favicon.svg"'), encoding="utf-8",
             )
-            for asset in ("worker.mjs", "app.mjs"):
+            for asset in ("worker.mjs", "app.mjs", "feeds.mjs"):
                 shutil.copy2(browser / asset, assembled / "app" / asset)
             shutil.copytree(browser / "pkg", assembled / "app/pkg")
         (work / "output").rename(work / "flat")

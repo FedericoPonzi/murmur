@@ -48,6 +48,7 @@ jobs:
         run: |
           python3 browser/check.py
           python3 browser/check.py --page app-tests.html
+          python3 browser/check.py --page feed-state-tests.html
       - name: Run Clippy
         run: cargo clippy --workspace --locked --all-targets -- -D warnings
       - name: Build release
