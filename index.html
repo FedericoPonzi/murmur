@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Murmur</title>
+<style>
+  :root { color-scheme: light dark; font: 16px system-ui, sans-serif; }
+  body { max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
+  input, button { font: inherit; padding: .6rem; }
+  input { min-width: 0; flex: 1; }
+  form { display: flex; gap: .5rem; margin: .5rem 0 1.5rem; }
+  code { overflow-wrap: anywhere; }
+  article { border-top: 1px solid #888; padding: 1rem 0; }
+  article p, #bio { white-space: pre-wrap; overflow-wrap: anywhere; }
+  time { font-size: .85rem; opacity: .75; }
+  #status { min-height: 1.5rem; }
+</style>
+<h1>Murmur <small>PoC</small></h1>
+<p>Read-only browser bridge. Publish using <code>murmur post "message"</code> over SSH.</p>
+<p>This server's feed key: <code id="own-key">Loading...</code></p>
+<button id="own" disabled>Read this server's feed</button>
+<label for="key"><p>Read another feed by RecordKey</p></label>
+<form id="follow">
+  <input id="key" placeholder="Veilid RecordKey" required autocomplete="off" aria-label="Feed RecordKey">
+  <button type="submit" disabled>Read feed</button>
+</form>
+<p id="status" role="status" aria-live="polite"></p>
+<h2 id="author"></h2>
+<p id="bio"></p>
+<p><code id="feed-key"></code></p>
+<section id="posts" aria-label="Posts"></section>
+<script>
+  const $ = id => document.getElementById(id);
+  let ownKey = '';
+  function busy(value) {
+    document.querySelectorAll('button').forEach(button => { button.disabled = value; });
+  }
+  async function json(path) {
+    const response = await fetch(path, { signal: AbortSignal.timeout(100000), cache: 'no-store' });
+    const value = await response.json();
+    if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+    return value;
+  }
+  async function loadFeed(key) {
+    busy(true);
+    $('status').textContent = 'Loading feed...';
+    $('author').textContent = '';
+    $('bio').textContent = '';
+    $('feed-key').textContent = '';
+    $('posts').replaceChildren();
+    try {
+      const feed = await json('/api/feed/' + encodeURIComponent(key));
+      $('author').textContent = feed.metadata.author_name;
+      $('bio').textContent = feed.metadata.bio;
+      $('feed-key').textContent = feed.record_key;
+      for (const post of feed.posts) {
+        const article = document.createElement('article');
+        const time = document.createElement('time');
+        const date = new Date(post.timestamp * 1000);
+        time.textContent = Number.isNaN(date.getTime()) ? 'Unknown timestamp' : date.toLocaleString();
+        const content = document.createElement('p');
+        content.textContent = post.content;
+        article.append(time, content);
+        $('posts').append(article);
+      }
+      $('status').textContent = feed.posts.length ? 'Newest posts (up to 20). Read again to refresh.' : 'No posts yet.';
+    } catch (error) {
+      $('status').textContent = 'Cannot read feed: ' + error.message;
+    } finally {
+      busy(false);
+    }
+  }
+  $('follow').addEventListener('submit', event => {
+    event.preventDefault();
+    loadFeed($('key').value.trim());
+  });
+  $('own').addEventListener('click', () => loadFeed(ownKey));
+  (async () => {
+    try {
+      const me = await json('/api/me');
+      ownKey = me.record_key;
+      $('own-key').textContent = ownKey;
+      await loadFeed(ownKey);
+    } catch (error) {
+      $('own-key').textContent = 'Unavailable';
+      $('status').textContent = 'Cannot load server identity: ' + error.message + '. Reload to retry.';
+    }
+  })();
+</script>
+</html>
