@@ -110,6 +110,26 @@ try {
   const home = timeline(storage, ownFeed);
   assert(home.length === 2 && home.every(entry => entry.local && !entry.unread),
     'Own confirmed posts were omitted, duplicated or counted unread in Home.');
+  const { mergeFeedPage } = await import('./feeds.mjs');
+  const page = (before = 106, latest = 105) => {
+    const bottom = Math.max(6, before - 20);
+    return { record_key: 'VLD0:paged', metadata: { author_name: 'Paged', bio: '', latest_post_index: latest },
+      posts: Array.from({ length: before - bottom }, (_, offset) => ({ index: before - offset - 1, timestamp: 1, content: 'Older post' })),
+      next: bottom > 6 ? { anchor: 105, before: bottom } : null };
+  };
+  let selected = mergeFeedPage(null, page(), 'VLD0:paged');
+  const initialPage = selected;
+  while (selected.next) selected = mergeFeedPage(selected, page(selected.next.before), 'VLD0:paged');
+  assert(selected.posts.length === 100 && selected.posts[99].index === 6 && selected.next === null,
+    'Retained pagination lost, duplicated or exceeded the 100-post window.');
+  rejects(() => mergeFeedPage(selected, page(), 'VLD0:paged'));
+  rejects(() => mergeFeedPage(initialPage, page(), 'VLD0:paged'));
+  rejects(() => mergeFeedPage(initialPage, page(86), 'VLD0:other'));
+  rejects(() => mergeFeedPage(null, { ...page(), next: null }, 'VLD0:paged'));
+  rejects(() => mergeFeedPage(null, { ...page(), next: { anchor: 105, before: 85 } }, 'VLD0:paged'));
+  rejects(() => mergeFeedPage(initialPage, page(86, 205), 'VLD0:paged'));
+  assert(mergeFeedPage(initialPage, page(86, 110), 'VLD0:paged').posts.length === 40,
+    'A newer root unnecessarily prevented reading still-retained older posts.');
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.message}`;

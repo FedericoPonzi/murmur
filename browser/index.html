@@ -151,6 +151,7 @@
 <label for="own-key">Your public RecordKey</label>
 <output id="own-key"></output>
 <button id="copy-key" class="quiet-button" disabled>Copy RecordKey</button>
+<button id="read-own" class="quiet-button" disabled>Read my retained feed</button>
 <button id="share-own" class="quiet-button" disabled>Copy your feed link</button>
 <details id="profile-settings">
 <summary>Edit public profile</summary>
@@ -226,6 +227,12 @@
 <button id="follow-selected" class="quiet-button" disabled>Follow this feed</button>
 <button id="share-selected" class="quiet-button" disabled>Copy feed link</button>
 <section id="feed-cards" aria-label="Read feed"></section>
+<div id="paging-tools" hidden>
+<p id="paging-info" class="preview-notice"></p>
+<p id="paging-status" role="status"></p>
+<button id="load-older" disabled>Load older posts</button>
+<button id="refresh-selected" class="quiet-button" disabled>Refresh from newest</button>
+</div>
 </section>
 </div>
 </section>

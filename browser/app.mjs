@@ -1,5 +1,5 @@
 import { loadFollows, addFollow, removeFollow, resetFollows, saveFeed, cachedFeeds, timeline, markRead, feedLink, sharedFeed,
-  exportReadingList, decodeReadingList, importReadingList, READING_LIST_LIMIT, muteFeed, mutedFeeds, STORAGE_KEY } from './feeds.mjs';
+  exportReadingList, decodeReadingList, importReadingList, READING_LIST_LIMIT, muteFeed, mutedFeeds, STORAGE_KEY, mergeFeedPage } from './feeds.mjs';
 
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
@@ -9,6 +9,7 @@ let refreshTask;
 let pendingFeed, unreadCount = 0;
 let lastNodeState, lastChecked;
 let currentView = 'home', selectedKey;
+let selectedPage;
 const feedProgress = new Map();
 const requests = new Map();
 const renderDiagnostics = () => {
@@ -99,6 +100,14 @@ const showFeed = result => {
 };
 const controls = () => {
   renderDiagnostics();
+  $('paging-tools').hidden = !selectedPage;
+  $('load-older').hidden = !selectedPage?.next;
+  $('load-older').disabled = $('refresh-selected').disabled = !active || !attached || busy;
+  if (selectedPage) {
+    $('paging-info').textContent = `Showing ${selectedPage.posts.length} loaded posts. `
+      + (selectedPage.next ? 'Up to 100 posts are retained per feed.' : 'End of this retained window; older posts may have been overwritten.')
+      + ' Loaded pages are temporary snapshots, not an archive.';
+  }
   $('follow').disabled = !active || busy;
   $('follow-selected').disabled = $('share-selected').disabled = !active || busy || !selectedKey;
   $('export-reading').disabled = $('import-reading').disabled = !active || busy;
@@ -118,6 +127,7 @@ const controls = () => {
   for (const id of ['verify-fields', 'verify-backup']) $(id).disabled = !active || guest || busy;
   for (const id of ['profile-fields', 'save-profile']) $(id).disabled = !active || guest || !attached || busy;
   $('copy-key').disabled = !active || guest;
+  $('read-own').disabled = !active || guest || !attached || busy;
   $('reconnect').disabled = !active || attached || busy;
   $('retry-reader').disabled = !active || attached || busy;
   $('stop-reader').disabled = !active;
@@ -405,6 +415,8 @@ const finish = message => {
   feedProgress.clear();
   pendingFeed = undefined;
   selectedKey = undefined;
+  selectedPage = undefined;
+  $('paging-status').textContent = '';
   currentView = 'home';
   unreadCount = 0;
   $('unread-count').textContent = '0 unread cached posts';
@@ -752,21 +764,46 @@ $('stop').onclick = async () => {
   try { await call('stop'); finish('Identity locked.'); }
   catch (failure) { finish(`Lock failed: ${failure.message}`); }
 };
-for (const [button, action, input] of [['publish', 'publish', 'content'], ['read', 'read', 'key']]) {
+$('refresh-selected').onclick = () => { $('key').value = selectedKey; $('read').click(); };
+$('read-own').onclick = () => { $('key').value = publicIdentity.record_key; $('read').click(); };
+$('load-older').onclick = async () => {
+  if (!active || !attached || busy || !selectedPage?.next) return;
+  const run = generation, previous = selectedPage;
+  busy = true;
+  $('paging-status').textContent = 'Reading older posts...';
+  controls();
+  try {
+    const page = await call('read_page', { key: previous.record_key, cursor: previous.next });
+    if (run !== generation || selectedPage !== previous) return;
+    selectedPage = mergeFeedPage(previous, page, previous.record_key);
+    showFeed(selectedPage);
+    $('paging-status').textContent = 'Older page loaded.';
+  } catch (failure) {
+    if (run === generation) $('paging-status').textContent = `${failure.message} Existing pages kept; retry or refresh from newest.`;
+  } finally { if (run === generation) { busy = false; controls(); } }
+};
+for (const [button, action, input] of [['publish', 'publish', 'content'], ['read', 'read_page', 'key']]) {
   $(button).onclick = async () => {
     const run = generation;
     busy = true;
     controls();
     $('status').textContent = action === 'publish' ? 'Publishing; do not resend different text.' : 'Reading...';
-    $('feed').textContent = '';
-    $('feed-cards').replaceChildren();
-    selectedKey = undefined;
+    const value = $(input).value;
+    if (action === 'publish') {
+      $('feed').textContent = '';
+      $('feed-cards').replaceChildren();
+      selectedKey = selectedPage = undefined;
+    }
     if (action === 'publish') { clearTimeout(draftTimer); draftVersion++; }
     try {
-      const result = await call(action, $(input).value);
+      const result = await call(action, action === 'read_page' ? { key: value.trim() } : value);
       if (run !== generation) return;
-      showFeed(result);
-      if (action === 'read') showView('feed');
+      if (action === 'read_page') {
+        selectedPage = mergeFeedPage(null, result, value.trim());
+        $('paging-status').textContent = '';
+      }
+      showFeed(action === 'read_page' ? selectedPage : result);
+      if (action === 'read_page') showView('feed');
       $('status').textContent = 'Confirmed.';
       if (action === 'publish') {
         $('content').value = '';

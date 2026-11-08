@@ -58,6 +58,30 @@ const save = (storage, state) => {
   return state.follows;
 };
 export const loadFollows = storage => load(storage).follows;
+export function mergeFeedPage(previous, page, key) {
+  const invalid = () => { throw new Error('Invalid or incompatible feed page response.'); };
+  if (!fields(page, ['record_key', 'metadata', 'posts', 'next'])) invalid();
+  const latest = page.metadata?.latest_post_index;
+  if (latest !== null && !integer(latest)) invalid();
+  if (previous && (previous.record_key !== key || !previous.next)) invalid();
+  const anchor = previous ? previous.posts[0].index : latest;
+  const top = previous ? previous.next.before - 1 : latest;
+  const floor = anchor === null ? 0 : Math.max(0, anchor - 99);
+  const bottom = top === null ? 0 : Math.max(floor, top - 19);
+  if (previous && (latest === null || latest < anchor || bottom < Math.max(0, latest - 99))) {
+    throw new Error('Retained feed window changed; refresh the feed.');
+  }
+  const { next, ...feed } = page;
+  if (!validFeed(key, { ...feed, metadata: { ...feed.metadata, latest_post_index: top } })
+      || feed.posts.length !== (top === null ? 0 : top - bottom + 1)) invalid();
+  if (top !== null && bottom > floor) {
+    if (!fields(next, ['anchor', 'before']) || next.anchor !== anchor || next.before !== bottom) invalid();
+  } else if (next !== null) invalid();
+  const posts = [...(previous?.posts ?? []), ...feed.posts];
+  if (posts.length > 100) invalid();
+  return { ...feed, posts, next };
+}
+
 export function addFollow(storage, key) {
   const state = load(storage);
   if (state.follows.includes(key)) return state.follows;

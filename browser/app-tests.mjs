@@ -37,11 +37,28 @@ function installWorker() {
         read: { record_key: 'VLD0:remote', metadata: { author_name: 'Remote <b>author</b>', bio: '' },
           posts: [{ index: 0, timestamp: 1, content: 'A guest-readable <b>post</b>' }] },
       };
+      if (action === 'read_page') {
+        results.read_page = { ...results.read, metadata: { ...results.read.metadata, latest_post_index: 0 }, next: null };
+        if (value.key === identity.record_key) {
+          results.read_page = { record_key: identity.record_key,
+            metadata: { author_name: identity.author_name, bio: identity.bio, latest_post_index: 0 },
+            posts: identity.history, next: null };
+        }
+        if (value.key === 'VLD0:paged') {
+          const before = value.cursor?.before ?? 106, bottom = Math.max(6, before - 20);
+          results.read_page = { record_key: value.key,
+            metadata: { author_name: 'Paged <b>author</b>', bio: '', latest_post_index: 105 },
+            posts: Array.from({ length: before - bottom }, (_, offset) => ({ index: before - offset - 1,
+              timestamp: 1, content: `Older <b>post</b> ${before - offset - 1}` })),
+            next: bottom > 6 ? { anchor: 105, before: bottom } : null };
+        }
+      }
       const error = action === 'restore' && value.backup_passphrase !== 'disposable backup passphrase'
         ? 'Wrong passphrase or damaged credential envelope'
         : action === 'draft' && window.failDraft ? 'Storage unavailable'
         : action === 'publish' ? 'Network temporarily unavailable'
-        : action === 'read' && value === 'VLD0:existing' ? 'This feed is unavailable' : undefined;
+        : (action === 'read' && value === 'VLD0:existing') || (action === 'read_page' && value.key === 'VLD0:existing') ? 'This feed is unavailable'
+        : action === 'read_page' && value.cursor && window.failOlder ? 'Older page unavailable; retry' : undefined;
       if (action === 'read' && value !== 'VLD0:existing') results.read.metadata.latest_post_index = 0;
       queueMicrotask(() => { if (!this.terminated) this.onmessage({ data: { id, result: results[action], error } }); });
     }
@@ -95,6 +112,10 @@ try {
   assert(element('debug-attachment').textContent === 'AttachedStrong', 'SDK attachment was not displayed.');
   assert(element('debug-peers').textContent.includes('7'), 'Routing peer counts were not displayed.');
   assert(element('content').value === draft, 'Attachment erased the draft.');
+  assert(element('read-own'), 'Profile has no route to its retained network posts.');
+  element('read-own').click();
+  await wait(() => element('feed-cards').textContent.includes('Existing <b>literal</b> post'));
+  assert(element('content').value === draft, 'Reading retained posts erased the draft.');
   const latest = 'Text typed immediately before a failed publish';
   element('content').value = latest;
   element('content').dispatchEvent(new Event('input'));
@@ -164,6 +185,26 @@ try {
   element('read').click();
   await wait(() => element('feed-cards').textContent.includes('guest-readable'));
   assert(!element('feed-cards').querySelector('b'), 'Guest content was interpreted as markup.');
+  assert(element('load-older'), 'Missing older-post navigation.');
+  element('key').value = 'VLD0:paged';
+  element('read').click();
+  await wait(() => element('feed-cards').querySelectorAll('article').length === 20);
+  frame.contentWindow.failOlder = true;
+  element('load-older').click();
+  await wait(() => element('paging-status').textContent.includes('retry'));
+  assert(element('feed-cards').querySelectorAll('article').length === 20, 'Failed page erased existing posts.');
+  frame.contentWindow.failOlder = false;
+  for (const count of [40, 60, 80, 100]) {
+    element('load-older').click();
+    await wait(() => element('feed-cards').querySelectorAll('article').length === count);
+    await wait(() => !element('read').disabled);
+  }
+  assert(element('load-older').hidden && !element('feed-cards').querySelector('b'), 'Pagination exceeded the window or interpreted HTML.');
+  element('refresh-selected').click();
+  await wait(() => element('feed-cards').querySelectorAll('article').length === 20);
+  element('key').value = 'VLD0:remote';
+  element('read').click();
+  await wait(() => element('feed-cards').textContent.includes('guest-readable'));
   assert(frame.contentWindow.authorStarts === authorStarts, 'Guest started an author session.');
   assert(element('follow'), 'Missing saved follows.');
   element('follow').click();
@@ -203,6 +244,7 @@ try {
   assert(remoteItem().textContent.includes('Unmute'), 'Muted follow disappeared instead of offering unmute.');
   element('key').value = 'VLD0:remote';
   element('read').click();
+  await wait(() => !element('read').disabled);
   await wait(() => element('feed-cards').textContent.includes('guest-readable'));
   remoteItem().querySelector('[data-action="mute"]').click();
   await wait(() => element('timeline').textContent.includes('guest-readable'));
@@ -266,7 +308,7 @@ try {
   assert(!element('reset-follows').hidden, 'Unreadable follows cannot be reset explicitly.');
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
-  document.getElementById('result').textContent = `failed: ${failure.message}`;
+  document.getElementById('result').textContent = `failed: ${failure.stack ?? failure.message}`;
 } finally {
   frame.remove();
   await fetch('/__check_done');
