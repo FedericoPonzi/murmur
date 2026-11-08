@@ -9,6 +9,7 @@ from urllib.request import urlopen
 import zipfile
 
 from package import make_bundle
+from build import APP_ASSETS, release_id
 
 
 class BundleTests(unittest.TestCase):
@@ -107,6 +108,25 @@ class BundleTests(unittest.TestCase):
         (self.root / "dependency/LICENSE-MIT").write_text("Upstream copyright and permission")
         (self.output / "app/worker.mjs").unlink()
         with self.assertRaisesRegex(ValueError, "assets"):
+            self.build()
+        self.assertEqual(self.bundle.read_bytes(), previous)
+
+    def test_release_assets_are_packaged_and_cannot_be_modified(self):
+        files = {name: (self.output / ("style.css" if name == "style.css" else f"app/{name}")).read_bytes()
+                 for name in APP_ASSETS}
+        version = release_id(files)
+        directory = self.output / "app/releases" / version
+        for name, body in files.items():
+            path = directory / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(body)
+        self.build()
+        with zipfile.ZipFile(self.bundle) as archive:
+            self.assertEqual(archive.read(f"murmur-local-preview/output/app/releases/{version}/worker.mjs"),
+                             files["worker.mjs"])
+        previous = self.bundle.read_bytes()
+        (directory / "worker.mjs").write_text("modified")
+        with self.assertRaisesRegex(ValueError, "immutable"):
             self.build()
         self.assertEqual(self.bundle.read_bytes(), previous)
 

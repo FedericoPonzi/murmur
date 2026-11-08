@@ -6,6 +6,7 @@ import re
 import subprocess
 import tempfile
 import zipfile
+from build import APP_ASSETS, validate_release
 
 
 SITE_FILES = {
@@ -76,6 +77,11 @@ def make_bundle(repository, destination, metadata, provenance, rust_notices):
     paths = list(site.rglob("*"))
     if site.is_symlink() or any(path.is_symlink() for path in paths):
         raise ValueError("Preview assets must not contain symlinks.")
+    releases = site / "app/releases"
+    if releases.exists():
+        for directory in releases.iterdir():
+            validate_release(directory)
+            expected.update(f"app/releases/{directory.name}/{name}" for name in APP_ASSETS)
     actual = {path.relative_to(site).as_posix() for path in paths if path.is_file()}
     if actual != expected:
         raise ValueError(f"Unexpected or missing preview assets: {sorted(actual ^ expected)}")
@@ -84,7 +90,7 @@ def make_bundle(repository, destination, metadata, provenance, rust_notices):
     if not wasm.startswith(b"\0asm\1\0\0\0"):
         raise ValueError("Invalid browser WASM assets.")
     for symbol in (b"check_vault_format", b"test_seed_identity", b"test_storage"):
-        if symbol in wasm or symbol in files["output/app/pkg/murmur_browser.js"]:
+        if any(symbol in body for name, body in files.items() if name.endswith((".wasm", ".js"))):
             raise ValueError("Test-enabled bindings must not be distributed; rebuild without vault-tests.")
     files["serve.py"] = (repository / "website/serve.py").read_bytes()
     files["LICENSE.txt"] = (repository / "LICENSE").read_bytes()

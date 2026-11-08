@@ -105,13 +105,26 @@ class BuildTests(unittest.TestCase):
                     self.assertIn(unquote(target.fragment), Links(local.read_text()).ids)
         doc_css = urljoin(base + "docs/index.html", Links(self.read("docs/index.html")).stylesheets[0])
         app_css = urljoin(base + "app/index.html", Links(self.read("app/index.html")).stylesheets[0])
-        self.assertEqual(doc_css, app_css)
+        self.assertNotEqual(doc_css, app_css)
+        self.assertEqual((self.output / urlsplit(app_css).path.removeprefix("/murmur/")).read_bytes(),
+                         (self.output / "style.css").read_bytes())
         self.assertEqual((self.output / "style.css").read_bytes(), (REPOSITORY / "browser/style.css").read_bytes())
         self.assertEqual((self.output / "app/pkg/murmur_browser_bg.wasm").read_bytes(), WASM)
         self.assertEqual(self.read("app/worker.mjs"), (REPOSITORY / "browser/worker.mjs").read_text())
         self.assertEqual(self.read("app/app.mjs"), (REPOSITORY / "browser/app.mjs").read_text())
         self.assertEqual(self.read("app/feeds.mjs"), (REPOSITORY / "browser/feeds.mjs").read_text())
-        self.assertIn("new Worker('./worker.mjs'", self.read("app/app.mjs"))
+        self.assertIn("new Worker(new URL('./worker.mjs', import.meta.url)", self.read("app/app.mjs"))
+
+    def test_application_pins_worker_modules_wasm_and_styles_to_one_release(self):
+        self.build("--with-app")
+        page = self.read("app/index.html")
+        script = re.search(r'src="(\./releases/[a-f0-9]{64}/app.mjs)"', page)
+        self.assertIsNotNone(script, "App entrypoint is not release-pinned.")
+        release = self.output / "app" / Path(script[1]).parent
+        for name in ("app.mjs", "worker.mjs", "feeds.mjs", "device-session.mjs",
+                     "pkg/murmur_browser.js", "pkg/murmur_browser_bg.wasm", "style.css"):
+            self.assertEqual((release / name).read_bytes(), (self.root / "browser" / name).read_bytes())
+        self.assertIn(f'href="./{Path(script[1]).parent.as_posix()}/style.css"', page)
 
     def test_platforms_are_planned_without_fake_downloads(self):
         rows = re.findall(r"<tr>(.*?)</tr>", self.read("platforms.html"), re.S)

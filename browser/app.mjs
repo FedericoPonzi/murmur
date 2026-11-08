@@ -48,7 +48,7 @@ const clearPassphrases = () => {
 const authorLink = (author, key) => {
   const link = document.createElement('a');
   link.textContent = author;
-  link.href = feedLink(new URL('./index.html', import.meta.url), key);
+  link.href = feedLink(new URL('./index.html', document.baseURI), key);
   link.title = key;
   link.dataset.feedKey = key;
   link.setAttribute('aria-label', `View ${author}'s feed`);
@@ -271,7 +271,7 @@ const copyFeedLink = async key => {
   try {
     const canonical = await call('check_key', key);
     if (run !== generation) return;
-    await navigator.clipboard.writeText(feedLink(new URL('./index.html', import.meta.url), canonical));
+    await navigator.clipboard.writeText(feedLink(new URL('./index.html', document.baseURI), canonical));
     if (run === generation) $('status').textContent = 'Feed link copied. Anyone with it can read this feed.';
   } catch (failure) {
     if (run === generation) $('status').textContent = `Could not copy feed link: ${failure.message}`;
@@ -463,7 +463,7 @@ const finish = (message, failure = false) => {
 };
 const makeWorker = () => {
   if (worker) return;
-  const current = new Worker('./worker.mjs', { type: 'module' });
+  const current = new Worker(new URL('./worker.mjs', import.meta.url), { type: 'module' });
   worker = current;
   current.onerror = event => {
     if (worker === current) finish(`Worker failed: ${event.message}`, true);

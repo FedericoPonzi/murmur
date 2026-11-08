@@ -1,5 +1,6 @@
 import argparse
 import html
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,27 @@ import shutil
 import subprocess
 import tempfile
 from urllib.parse import unquote
+
+APP_ASSETS = ("app.mjs", "worker.mjs", "feeds.mjs", "device-session.mjs",
+              "pkg/murmur_browser.js", "pkg/murmur_browser_bg.wasm", "style.css")
+
+
+def release_id(files):
+    digest = hashlib.sha256()
+    for name in APP_ASSETS:
+        body = files[name]
+        digest.update(name.encode() + b"\0" + len(body).to_bytes(8, "big") + body)
+    return digest.hexdigest()
+
+
+def validate_release(directory):
+    paths = list(directory.rglob("*"))
+    if directory.is_symlink() or any(path.is_symlink() for path in paths):
+        raise ValueError("Release assets must not contain symlinks.")
+    if {path.relative_to(directory).as_posix() for path in paths if path.is_file()} != set(APP_ASSETS):
+        raise ValueError("Release assets are missing or unexpected.")
+    if directory.name != release_id({name: (directory / name).read_bytes() for name in APP_ASSETS}):
+        raise ValueError("Release assets do not match their immutable version.")
 
 
 def build(repository, with_app=False):
@@ -73,13 +95,20 @@ def build(repository, with_app=False):
         for asset in ("style.css", "favicon.svg"):
             shutil.copy2(browser / asset, assembled / asset)
         if with_app:
+            files = {name: (browser / name).read_bytes() for name in APP_ASSETS}
+            version = release_id(files)
+            for name, body in files.items():
+                target = assembled / "app/releases" / version / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(body)
             probe = (browser / "index.html").read_text(encoding="utf-8")
             if "<!-- site_header -->" not in probe or 'href="./style.css"' not in probe:
                 raise ValueError("Browser probe is missing its site header or stylesheet marker.")
             header = (website / "templates/main/header.html").read_text(encoding="utf-8")
             probe = probe.replace("<!-- site_header -->", header.replace("$GENERETO['root']", ".."))
             (assembled / "app/index.html").write_text(
-                probe.replace('href="./style.css"', 'href="../style.css"')
+                probe.replace('href="./style.css"', f'href="./releases/{version}/style.css"')
+                     .replace('src="./app.mjs"', f'src="./releases/{version}/app.mjs"')
                      .replace('href="./favicon.svg"', 'href="../favicon.svg"'), encoding="utf-8",
             )
             for asset in ("worker.mjs", "app.mjs", "feeds.mjs", "device-session.mjs"):
