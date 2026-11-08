@@ -182,6 +182,12 @@ main:has(.landing) { max-width: none; padding: 0; }
 .composer-footer #content-count { margin: 0; font-size: .68rem; }
 .composer-footer button { margin: 0; border-radius: 2rem; font-size: .78rem; padding: .55rem .85rem; }
 .feed-composer #draft-status { padding: 0; border: 0; background: transparent; font-size: .67rem; line-height: 1.5; }
+.feed-composer #publish-status { padding: 0; border: 0; background: transparent; font-size: .75rem; }
+#publish-status:empty { display: none; }
+#publish[aria-busy="true"] { display: inline-flex; align-items: center; gap: .45rem; }
+#publish[aria-busy="true"]::before { content: ""; width: .8em; height: .8em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: posting 1s linear infinite; }
+@keyframes posting { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #publish[aria-busy="true"]::before { animation: none; } }
 #app-navigation { display: grid; gap: .2rem; margin: .85rem 0; }
 #app-navigation button { display: flex; align-items: center; gap: .8rem; width: 100%; margin: 0; padding: .75rem .65rem; text-align: left; border-radius: 2rem; background: transparent; color: var(--text); font-size: 1rem; font-weight: 450; }
 #app-navigation button[aria-current="page"] { color: var(--text); background: #f1f5f9; font-weight: 750; }

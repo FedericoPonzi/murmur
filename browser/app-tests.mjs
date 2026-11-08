@@ -34,6 +34,7 @@ function installWorker(existing = false) {
         backup: '{"header":{"version":1},"ciphertext":[1]}',
         verify_backup: identity.record_key,
         profile: identity, update_profile: identity,
+        publish: { index: 1, timestamp: 2, content: value },
         read_only: { starts: 1, reader: true, protected: false, identity: null },
         check_key: value,
         read: { record_key: 'VLD0:remote', metadata: { author_name: 'Remote <b>author</b>', bio: '' },
@@ -59,13 +60,14 @@ function installWorker(existing = false) {
         : action === 'restore' && value.backup_passphrase !== 'disposable backup passphrase'
         ? 'Wrong passphrase or damaged credential envelope'
         : action === 'draft' && window.failDraft ? 'Storage unavailable'
-        : action === 'publish' ? 'Network temporarily unavailable'
+        : action === 'publish' && !window.publishSuccess ? 'Network temporarily unavailable'
         : (action === 'read' && value === 'VLD0:existing') || (action === 'read_page' && value.key === 'VLD0:existing') ? 'This feed is unavailable'
         : action === 'read_page' && value.cursor && window.failOlder
           ? window.failOlder === 'expired' ? 'Retained feed window changed; refresh the feed.' : 'Older page unavailable; retry' : undefined;
       if (action === 'read' && value !== 'VLD0:existing') results.read.metadata.latest_post_index = 0;
       const respond = () => { if (!this.terminated) this.onmessage({ data: { id, result: results[action], error } }); };
       if (action === 'has_remembered' && existing) window.resolveRemember = respond;
+      else if (action === 'publish' && window.deferPublish) window.resolvePublish = respond;
       else if (action === 'read_page' && value.cursor && window.deferOlder) window.resolveOlder = respond;
       else queueMicrotask(respond);
     }
@@ -178,18 +180,48 @@ try {
   assert(!element('view-feed').hidden && frame.contentWindow.authorStarts === 1,
     'Author navigation restarted the node or did not open the feed.');
   assert(element('content').value === draft, 'Reading retained posts erased the draft.');
+  element('new-post').click();
   const latest = 'Text typed immediately before a failed publish';
   element('content').value = latest;
   element('content').dispatchEvent(new Event('input'));
+  frame.contentWindow.deferPublish = true;
   element('publish').click();
+  await wait(() => frame.contentWindow.resolvePublish);
+  assert(element('publish').textContent === 'Posting...' && element('publish').getAttribute('aria-busy') === 'true',
+    'Pending publication has no busy button state.');
+  assert(element('publish-status')?.textContent.includes('confirmation') && element('publish-status').checkVisibility(),
+    'Pending publication has no visible inline feedback.');
+  frame.contentWindow.dispatchEvent(new frame.contentWindow.StorageEvent('storage',
+    { key: 'murmur-follows-v1', storageArea: frame.contentWindow.localStorage }));
+  assert(element('publish').textContent === 'Posting...', 'Preference updates erased publication progress.');
+  frame.contentWindow.resolvePublish();
   await wait(() => frame.contentWindow.lastSavedDraft === latest);
+  await wait(() => !element('content').disabled);
   assert(!element('content').readOnly, 'A pre-publication failure froze the draft.');
+  assert(element('publish-status').textContent.includes('Network temporarily unavailable'),
+    'Publication failure is not visible beside the composer.');
+  assert(element('publish').getAttribute('aria-busy') === 'false', 'Failed publication left the button busy.');
   frame.contentWindow.networkReady = false;
   await wait(() => element('read').disabled);
   assert(element('content').value === latest, 'Going offline erased the draft.');
   frame.contentWindow.networkReady = true;
   await wait(() => !element('read').disabled);
   assert(frame.contentWindow.publishCalls === 1, 'Reconnection resent the post automatically.');
+  frame.contentWindow.deferPublish = false;
+  frame.contentWindow.publishSuccess = true;
+  const nextPost = 'Another post without waiting for draft storage';
+  element('content').value = nextPost;
+  element('content').dispatchEvent(new Event('input'));
+  assert(element('publish-status').textContent === '', 'An old publication outcome follows the next draft.');
+  element('publish').click();
+  await wait(() => element('content').value === '' && !element('content').disabled);
+  assert(element('publish-status').textContent === 'Post confirmed.', 'Successful publication has no inline confirmation.');
+  assert(element('timeline').textContent.includes(nextPost), 'Confirmed publication is missing from Home.');
+  assert(element('publish').textContent === 'Post' && element('publish').getAttribute('aria-busy') === 'false',
+    'Successful publication did not release its busy state.');
+  const publishedClose = new Event('beforeunload', { cancelable: true });
+  frame.contentWindow.dispatchEvent(publishedClose);
+  assert(!publishedClose.defaultPrevented, 'Confirmed publication still warns that its draft is unsaved.');
   assert(element('authored-history').textContent.includes('Existing <b>literal</b> post'), 'Local history was not rendered.');
   assert(!element('authored-history').querySelector('b'), 'Post text was interpreted as markup.');
   element('profile-settings').open = true;

@@ -4,6 +4,7 @@ import { loadFollows, addFollow, removeFollow, resetFollows, saveFeed, cachedFee
 const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
 let active = false, attached = false, busy = false, authenticating = true, mode = 'create';
+let publishing = false;
 let publicIdentity, draftTimer, draftVersion = 0, guest = false;
 let draftDirty = false;
 let refreshTask;
@@ -155,7 +156,8 @@ const controls = () => {
   $('reconnect').disabled = !active || attached || busy;
   $('retry-reader').disabled = !active || attached || busy;
   $('stop-reader').disabled = !active;
-  $('publish').textContent = $('content').readOnly ? 'Retry saved post' : 'Post';
+  $('publish').textContent = publishing ? 'Posting...' : $('content').readOnly ? 'Retry saved post' : 'Post';
+  $('publish').setAttribute('aria-busy', String(publishing));
   $('publish').disabled = $('read').disabled = !active || !attached || busy;
   const length = Array.from($('content').value).length;
   $('content-count').textContent = `${length} / 280`;
@@ -459,9 +461,9 @@ const finish = (message, failure = false) => {
   }
   requests.clear();
   lastNodeState = lastChecked = undefined;
-  active = attached = busy = authenticating = false;
+  active = attached = busy = authenticating = publishing = false;
   guest = false;
-  for (const id of ['profile-name', 'profile-bio', 'own-key', 'feed', 'feed-cards', 'authored-history', 'draft-status', 'storage', 'follow-list', 'follow-status', 'timeline', 'feed-status']) $(id).textContent = '';
+  for (const id of ['profile-name', 'profile-bio', 'own-key', 'feed', 'feed-cards', 'authored-history', 'draft-status', 'publish-status', 'storage', 'follow-list', 'follow-status', 'timeline', 'feed-status']) $(id).textContent = '';
   $('reset-follows').hidden = true;
   publicIdentity = undefined;
   $('key').value = $('content').value = '';
@@ -687,6 +689,7 @@ const saveDraft = async () => {
 };
 $('content').oninput = () => {
   draftDirty = true;
+  if (!publishing) $('publish-status').textContent = '';
   controls();
   draftVersion++;
   clearTimeout(draftTimer);
@@ -856,8 +859,11 @@ $('load-older').onclick = async () => {
 };
 for (const [button, action, input] of [['publish', 'publish', 'content'], ['read', 'read_page', 'key']]) {
   $(button).onclick = async () => {
+    if (!active || !attached || busy || (action === 'publish' && guest)) return;
     const run = generation;
     busy = true;
+    publishing = action === 'publish';
+    if (publishing) $('publish-status').textContent = 'Posting... Waiting for network confirmation; keep this tab open.';
     controls();
     $('status').textContent = action === 'publish' ? 'Publishing; do not resend different text.' : 'Reading...';
     const value = $(input).value;
@@ -883,6 +889,8 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
       if (action === 'publish') {
         $('content').value = '';
         $('content').readOnly = false;
+        draftDirty = false;
+        $('publish-status').textContent = 'Post confirmed.';
         $('draft-status').textContent = 'Published. Your next draft will be saved here.';
         showIdentity({ ...publicIdentity, probe_post: null, draft: '',
           history: [...(publicIdentity.history ?? []).filter(post => post.index !== result.index), result]
@@ -894,14 +902,17 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
       $('status').textContent = failure.message
         + (action === 'read_page' && selectedPage ? ' Previous feed snapshot kept; retry or choose another key.' : '');
       if (action === 'publish') {
+        $('publish-status').textContent = `Post not confirmed: ${failure.message}. Checking saved state...`;
         try {
           const identity = await call('profile');
           if (run !== generation) return;
           if (identity?.probe_post) {
             $('content').value = identity.probe_post.content;
             $('content').readOnly = true;
+            $('publish-status').textContent = `Post not confirmed: ${failure.message}. Retry only the saved text.`;
           } else {
             $('content').readOnly = false;
+            $('publish-status').textContent = `Post not confirmed: ${failure.message}. Your text is kept here.`;
             await saveDraft();
           }
         } catch (profileFailure) {
@@ -909,7 +920,7 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
         }
       }
     } finally {
-      if (run === generation) { busy = false; controls(); }
+      if (run === generation) { busy = publishing = false; controls(); }
     }
   };
 }
