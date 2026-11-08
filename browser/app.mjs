@@ -45,11 +45,26 @@ const clearPassphrases = () => {
   for (const id of ['passphrase', 'confirm-passphrase', 'unlock-passphrase', 'restore-passphrase',
     'restore-local-passphrase', 'restore-confirm', 'backup-passphrase', 'backup-confirm', 'verify-passphrase']) $(id).value = '';
 };
-const postCard = (post, author) => {
+const authorLink = (author, key) => {
+  const link = document.createElement('a');
+  link.textContent = author;
+  link.href = feedLink(new URL('./index.html', import.meta.url), key);
+  link.title = key;
+  link.dataset.feedKey = key;
+  link.setAttribute('aria-label', `View ${author}'s feed`);
+  link.onclick = event => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (!active || !attached || busy) return;
+    $('key').value = key;
+    $('read').click();
+  };
+  return link;
+};
+const postCard = (post, author, key) => {
   const article = document.createElement('article');
   article.className = 'post-card';
-  const name = document.createElement('strong');
-  name.textContent = author;
+  const name = authorLink(author, key);
   const timestamp = document.createElement('time');
   const date = new Date(post.timestamp * 1000);
   timestamp.textContent = Number.isFinite(date.getTime()) ? date.toLocaleString() : 'Timestamp unavailable';
@@ -78,7 +93,7 @@ const showIdentity = identity => {
   $('profile-bio').textContent = identity.bio;
   $('own-key').textContent = identity.record_key;
   const posts = [...(identity.history ?? [])].reverse();
-  $('authored-history').replaceChildren(...posts.map(post => postCard(post, identity.author_name)));
+  $('authored-history').replaceChildren(...posts.map(post => postCard(post, identity.author_name, identity.record_key)));
   if (!posts.length) $('authored-history').textContent = 'No locally saved posts yet.';
   if (active) loadFollowView();
 };
@@ -89,9 +104,10 @@ const showFeed = result => {
   const author = result.metadata?.author_name ?? publicIdentity.author_name;
   const heading = document.createElement('h3');
   heading.textContent = author;
+  heading.tabIndex = -1;
   const bio = document.createElement('p');
   bio.textContent = result.metadata?.bio ?? '';
-  $('feed-cards').replaceChildren(heading, bio, ...posts.map(post => postCard(post, author)));
+  $('feed-cards').replaceChildren(heading, bio, ...posts.map(post => postCard(post, author, selectedKey)));
   if (!posts.length) {
     const empty = document.createElement('p');
     empty.textContent = 'No posts yet.';
@@ -116,10 +132,14 @@ const controls = () => {
   $('mark-read').disabled = !active || busy || !unreadCount;
   $('refresh-timeline').disabled = !active || !attached || busy || !$('follow-list').children.length;
   $('cancel-timeline').disabled = !refreshTask || refreshTask.cancelled;
-  for (const button of $('timeline').querySelectorAll('button')) button.disabled = !active || !attached || busy;
+  for (const link of document.querySelectorAll('a[data-feed-key]')) {
+    const disabled = !active || !attached || busy;
+    link.setAttribute('aria-disabled', String(disabled));
+    link.tabIndex = disabled ? -1 : 0;
+  }
   $('reset-follows').disabled = busy;
   for (const button of $('follow-list').querySelectorAll('button')) {
-    button.disabled = !active || busy || (button.dataset.action === 'read' && !attached);
+    button.disabled = !active || busy;
   }
   for (const id of ['create-fields', 'unlock-fields', 'restore-fields', 'start', 'unlock-start',
     'restore-start', 'show-create', 'show-unlock', 'show-restore', 'restore-back', 'browse-start']) $(id).disabled = authenticating || active;
@@ -143,16 +163,17 @@ const controls = () => {
 };
 const renderFollows = follows => {
   const muted = mutedFeeds(localStorage);
+  const snapshots = new Map(cachedFeeds(localStorage).map(entry => [entry.key, entry.feed]));
   $('follow-list').replaceChildren(...follows.map(key => {
     const item = document.createElement('li');
     const label = document.createElement('span');
-    label.textContent = key;
-    const read = document.createElement('button');
-    read.type = 'button';
-    read.textContent = 'Read';
-    read.dataset.action = 'read';
-    read.setAttribute('aria-label', `Read feed ${key}`);
-    read.onclick = () => { $('key').value = key; $('read').click(); };
+    const author = snapshots.get(key)?.metadata.author_name;
+    label.append(authorLink(author ?? key, key));
+    if (author) {
+      const recordKey = document.createElement('small');
+      recordKey.textContent = key;
+      label.append(recordKey);
+    }
     const mute = document.createElement('button');
     mute.type = 'button';
     mute.dataset.action = 'mute';
@@ -167,7 +188,7 @@ const renderFollows = follows => {
     remove.onclick = () => changeReading(storage => removeFollow(storage, key), 'Feed removed from your follows.');
     const actions = document.createElement('div');
     actions.className = 'follow-actions';
-    actions.append(read, mute, remove);
+    actions.append(mute, remove);
     item.append(label, actions);
     return item;
   }));
@@ -184,7 +205,7 @@ const renderTimeline = () => {
   unreadCount = entries.filter(entry => entry.unread).length;
   $('unread-count').textContent = `${unreadCount} unread cached posts`;
   $('timeline').replaceChildren(...entries.map(entry => {
-    const article = postCard(entry.post, entry.metadata.author_name);
+    const article = postCard(entry.post, entry.metadata.author_name, entry.key);
     const body = article.querySelector('.post-body');
     if (entry.unread) {
       const badge = document.createElement('small');
@@ -192,14 +213,6 @@ const renderTimeline = () => {
       badge.className = 'unread-badge';
       body.prepend(badge);
     }
-    const read = document.createElement('button');
-    read.type = 'button';
-    read.className = 'quiet-button';
-    read.textContent = `Read feed ${entry.key.slice(0, 20)}...`;
-    read.title = entry.key;
-    read.disabled = !active || !attached || busy;
-    read.onclick = () => { $('key').value = entry.key; $('read').click(); };
-    body.append(read);
     if (entry.local) {
       const local = document.createElement('small');
       local.textContent = 'Confirmed on this browser';
@@ -348,7 +361,10 @@ $('refresh-timeline').onclick = async () => {
       }
       renderTimeline();
     }
-    if (run === generation) $('status').textContent = `${task.cancelled ? 'Refresh stopped' : 'Refresh finished'}: ${succeeded} updated, ${failed} failed.`;
+    if (run === generation) {
+      renderFollows(loadFollows(localStorage));
+      $('status').textContent = `${task.cancelled ? 'Refresh stopped' : 'Refresh finished'}: ${succeeded} updated, ${failed} failed.`;
+    }
   } catch (failure) {
     if (run === generation) {
       loadFollowView();
@@ -803,7 +819,10 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
         $('paging-status').textContent = '';
       }
       showFeed(action === 'read_page' ? selectedPage : result);
-      if (action === 'read_page') showView('feed');
+      if (action === 'read_page') {
+        showView('feed');
+        $('feed-cards').querySelector('h3').focus({ preventScroll: matchMedia('(min-width: 761px)').matches });
+      }
       $('status').textContent = 'Confirmed.';
       if (action === 'publish') {
         $('content').value = '';

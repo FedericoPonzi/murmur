@@ -33,8 +33,12 @@ confirmation releases the composer without advancing the index twice.
 To read without creating or unlocking an author, choose **Read without an
 identity** and paste a complete RecordKey. This uses a separate read-only node;
 it cannot initialize a feed or publish. **Stop reading** ends that session.
-Use **Follow this feed** to save a complete RecordKey. **Read** beside a saved
-feed opens it; **Unfollow** removes it. Up to 50 follows survive reload on this
+Click an author's name on a post to open their feed without restarting your
+session or clearing your draft. Names are links, so opening one in a new tab
+uses the guest shared-feed path. In **Following**, click the author's name
+(or their RecordKey if no profile is cached). **Open feed** accepts a pasted key.
+Use **Follow this feed** to save a complete RecordKey; **Unfollow** removes it.
+Up to 50 follows survive reload on this
 origin. The list is not passphrase-protected or included in identity backups.
 **Refresh followed feeds** merges their newest posts. Each feed reports its own
 read failure and last successful cached read; an unavailable feed does not erase

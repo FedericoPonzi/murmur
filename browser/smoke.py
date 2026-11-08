@@ -186,7 +186,10 @@ def check(storage_only=False):
             wait.until(lambda _: content in text("feed"))
             assert json.loads(text("feed"))["index"] == 1
             assert element("content").get_attribute("value") == ""
-            click("read-own")
+            click("nav-home")
+            author_link = element("timeline").find_element(By.TAG_NAME, "a")
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'})", author_link)
+            author_link.send_keys(Keys.ENTER)
             wait.until(lambda _: len(element("feed-cards").find_elements(By.TAG_NAME, "article")) == 2)
             assert json.loads(text("feed"))["next"] is None
             assert not element("load-older").is_displayed()

@@ -198,7 +198,10 @@ main:has(.landing) { max-width: none; padding: 0; }
 .post-avatar { border-radius: 50%; width: 2.4rem; height: 2.4rem; font-size: .9rem; }
 .post-body { min-width: 0; }
 .post-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .65rem; }
-.post-heading strong { color: var(--text); font-size: .88rem; }
+.post-heading a { color: var(--text); font-size: .88rem; font-weight: 700; text-decoration: none; }
+.post-heading a:hover, .post-heading a:focus-visible { color: var(--blue); text-decoration: underline; }
+a[data-feed-key][aria-disabled="true"] { cursor: default; opacity: .65; }
+#follow-list small { display: block; color: var(--muted); font-size: .7rem; }
 .post-heading time { font-size: .68rem; }
 .post-body p { font-size: .9rem; line-height: 1.7; }
 .post-body button { max-width: 100%; margin: .4rem .5rem .2rem 0; padding: .3rem .55rem; background: transparent; border: 1px solid var(--border); color: var(--blue); font-size: .65rem; text-align: left; }

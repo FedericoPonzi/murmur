@@ -69,7 +69,11 @@ function installWorker() {
   };
   URL.createObjectURL = blob => { window.downloadedBlob = blob; return 'blob:disposable-test'; };
   URL.revokeObjectURL = () => {};
-  HTMLAnchorElement.prototype.click = function () { window.downloadName = this.download; };
+  const click = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function () {
+    if (this.download) window.downloadName = this.download;
+    else click.call(this);
+  };
 }
 const frame = document.createElement('iframe');
 frame.title = 'Application behavior checks';
@@ -116,8 +120,16 @@ try {
   assert(element('debug-peers').textContent.includes('7'), 'Routing peer counts were not displayed.');
   assert(element('content').value === draft, 'Attachment erased the draft.');
   assert(element('read-own'), 'Profile has no route to its retained network posts.');
-  element('read-own').click();
+  const ownAuthor = element('timeline').querySelector('a');
+  assert(ownAuthor?.textContent === 'Disposable author', 'Home author name is not a feed link.');
+  assert(new URL(ownAuthor.href).searchParams.get('feed') === 'VLD0:disposable', 'Author link points at the wrong feed.');
+  assert(!element('timeline').querySelector('button'), 'Home still has a separate read-feed button.');
+  ownAuthor.click();
   await wait(() => element('feed-cards').textContent.includes('Existing <b>literal</b> post'));
+  assert(frame.contentDocument.activeElement === element('feed-cards').querySelector('h3'),
+    'Author navigation did not move keyboard focus to the opened feed.');
+  assert(!element('view-feed').hidden && frame.contentWindow.authorStarts === 1,
+    'Author navigation restarted the node or did not open the feed.');
   assert(element('content').value === draft, 'Reading retained posts erased the draft.');
   const latest = 'Text typed immediately before a failed publish';
   element('content').value = latest;
@@ -241,6 +253,23 @@ try {
   assert(element('timeline').textContent.includes('guest-readable'), 'One failed feed hid successful posts.');
   assert(element('feed-status').textContent.includes('This feed is unavailable'), 'Per-feed failure was hidden.');
   assert(!element('timeline').querySelector('b'), 'Timeline interpreted text as HTML.');
+  const remoteAuthor = element('timeline').querySelector('a');
+  assert(remoteAuthor?.textContent === 'Remote <b>author</b>', 'Remote author name is not a literal feed link.');
+  assert(new URL(remoteAuthor.href).searchParams.get('feed') === 'VLD0:remote', 'Remote author link is misbound.');
+  element('key').value = 'VLD0:unrelated-input';
+  remoteAuthor.click();
+  await wait(() => !element('read').disabled);
+  assert(element('key').value === 'VLD0:remote' && !element('view-feed').hidden, 'Author link used the editable key instead of its feed.');
+  const followedAuthor = [...element('follow-list').querySelectorAll('a')].find(link => link.textContent === 'Remote <b>author</b>');
+  assert(followedAuthor, 'Following still requires a separate read button.');
+  frame.contentWindow.networkReady = false;
+  await wait(() => element('read').disabled);
+  element('key').value = 'Offline input';
+  followedAuthor.click();
+  assert(element('key').value === 'Offline input', 'Offline author link started a feed read.');
+  element('key').value = 'VLD0:remote';
+  frame.contentWindow.networkReady = true;
+  await wait(() => !element('read').disabled);
   element('refresh-timeline').click();
   await wait(() => !element('refresh-timeline').disabled);
   assert(element('timeline').querySelectorAll('article').length === 1, 'Refresh duplicated cached posts.');
