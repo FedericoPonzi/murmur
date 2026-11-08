@@ -40,6 +40,11 @@ session or clearing your draft. Names are links, so opening one in a new tab
 uses the guest shared-feed path. In **Following**, click the author's name
 (or their RecordKey if no profile is cached). **Open feed** accepts a pasted key.
 Use **Follow this feed** to save a complete RecordKey; **Unfollow** removes it.
+Following automatically loads that feed's recent posts into Home without
+refreshing unrelated feeds or changing views. If offline, loading waits for
+connection in the current session. A read failure keeps the follow and existing
+cached posts; **Feed details** explains the error and **Refresh** retries.
+Unfollowing or ending the session cancels queued automatic reads.
 Up to 50 follows survive reload on this
 origin. The list is not passphrase-protected or included in identity backups.
 **Refresh followed feeds** merges their newest posts. Each feed reports its own

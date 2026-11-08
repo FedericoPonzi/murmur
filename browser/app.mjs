@@ -13,6 +13,7 @@ let lastNodeState, lastChecked;
 let currentView = 'home', selectedKey;
 let selectedPage;
 const feedProgress = new Map();
+const queuedFollows = new Set();
 const requests = new Map();
 const renderDiagnostics = () => {
   $('session-name').textContent = publicIdentity?.author_name ?? 'Read-only reader';
@@ -168,6 +169,7 @@ const controls = () => {
   for (const id of ['home', 'profile', 'following', 'settings']) $(`nav-${id}`).disabled = !active;
 };
 const renderFollows = follows => {
+  for (const key of queuedFollows) if (!follows.includes(key)) queuedFollows.delete(key);
   const muted = mutedFeeds(localStorage);
   const snapshots = new Map(cachedFeeds(localStorage).map(entry => [entry.key, entry.feed]));
   $('follow-list').replaceChildren(...follows.map(key => {
@@ -330,21 +332,26 @@ $('follow').onclick = async () => {
     if (run !== generation) return;
     const follows = await mutateReading(storage => addFollow(storage, key));
     if (run !== generation) return;
+    queuedFollows.add(key);
     renderFollows(follows);
     $('key').value = key;
-    $('follow-status').textContent = 'Feed is in your follows.';
+    $('follow-status').textContent = attached
+      ? 'Follow saved. Loading recent posts...'
+      : 'Follow saved. Posts will load when connected.';
   } catch (failure) {
     if (run === generation) {
       loadFollowView();
       $('follow-status').textContent = `Could not save follow: ${failure.message}`;
     }
-  } finally { if (run === generation) { busy = false; controls(); } }
+  } finally {
+    if (run === generation) { busy = false; controls(); await refreshTimeline(true); }
+  }
 };
 $('reset-follows').onclick = () => {
   if (!window.confirm('Reset follows and cached public feeds on this browser? Your author identity will not be changed.')) return;
   changeReading(resetFollows, 'Saved follows reset. Your author identity is unchanged.');
 };
-$('refresh-timeline').onclick = async () => {
+const refreshTimeline = async (queuedOnly = false) => {
   if (!active || !attached || busy) return;
   const run = generation, task = { cancelled: false };
   refreshTask = task;
@@ -352,7 +359,10 @@ $('refresh-timeline').onclick = async () => {
   controls();
   let succeeded = 0, failed = 0;
   try {
-    const keys = loadFollows(localStorage);
+    const keys = loadFollows(localStorage).filter(key => !queuedOnly || queuedFollows.has(key));
+    if (!keys.length) return;
+    for (const key of keys) queuedFollows.delete(key);
+    $('follow-status').textContent = queuedOnly ? 'Follow saved. Loading recent posts...' : '';
     for (const key of keys) {
       if (task.cancelled || run !== generation) break;
       feedProgress.set(key, { loading: true });
@@ -375,9 +385,16 @@ $('refresh-timeline').onclick = async () => {
     if (run === generation) {
       renderFollows(loadFollows(localStorage));
       $('status').textContent = `${task.cancelled ? 'Refresh stopped' : 'Refresh finished'}: ${succeeded} updated, ${failed} failed.`;
+      if (queuedOnly) {
+        $('follow-status').textContent = task.cancelled
+          ? 'Follow saved. Refresh stopped; use Refresh to load posts.'
+          : failed ? 'Follow saved, but posts could not be loaded. Check Feed details and use Refresh to retry.'
+          : 'Follow saved. Feed loaded for Home.';
+      }
     }
   } catch (failure) {
     if (run === generation) {
+      queuedFollows.clear();
       loadFollowView();
       $('follow-status').textContent = `Timeline refresh failed: ${failure.message}`;
     }
@@ -385,6 +402,7 @@ $('refresh-timeline').onclick = async () => {
     if (run === generation) { refreshTask = undefined; busy = false; controls(); }
   }
 };
+$('refresh-timeline').onclick = () => refreshTimeline();
 $('cancel-timeline').onclick = () => {
   if (refreshTask) {
     refreshTask.cancelled = true;
@@ -447,6 +465,7 @@ const finish = (message, failure = false) => {
   if (refreshTask) refreshTask.cancelled = true;
   refreshTask = undefined;
   feedProgress.clear();
+  queuedFollows.clear();
   pendingFeed = undefined;
   selectedKey = undefined;
   selectedPage = undefined;
@@ -573,7 +592,10 @@ const watchAttachment = run => {
         controls();
         $('status').textContent = `Connection check failed: ${failure.message}. Use Retry connection.`;
       }
-    } finally { checking = false; }
+    } finally {
+      checking = false;
+      if (run === generation && queuedFollows.size) await refreshTimeline(true);
+    }
   }, 1000);
 };
 $('browse-start').onclick = async () => {

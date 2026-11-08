@@ -21,6 +21,7 @@ function installWorker(existing = false) {
       if (action === 'logout') window.loggedOut = true;
       if (['create', 'unlock', 'restore'].includes(action)) window.authorStarts++;
       if (action === 'publish') window.publishCalls = (window.publishCalls ?? 0) + 1;
+      if (action === 'read') (window.feedReads ??= []).push(value);
       if (action === 'draft' && !window.failDraft) {
         identity.draft = window.lastSavedDraft = value;
       }
@@ -57,6 +58,11 @@ function installWorker(existing = false) {
             next: bottom > 6 ? { anchor: 105, before: bottom } : null };
         }
       }
+      if (action === 'read' && value === 'VLD0:offline-follow') {
+        results.read = { record_key: value,
+          metadata: { author_name: 'Offline-followed author', bio: '', latest_post_index: 0 },
+          posts: [{ index: 0, timestamp: 2, content: 'Post loaded after connecting' }] };
+      }
       const error = action === 'unlock' && window.failUnlock ? 'This identity is active in another tab. Choose Logout there, then retry here.'
         : action === 'restore' && value.backup_passphrase !== 'disposable backup passphrase'
         ? 'Wrong passphrase or damaged credential envelope'
@@ -69,6 +75,7 @@ function installWorker(existing = false) {
       const respond = () => { if (!this.terminated) this.onmessage({ data: { id, result: results[action], error } }); };
       if (action === 'has_remembered' && existing) window.resolveRemember = respond;
       else if (action === 'publish' && window.deferPublish) window.resolvePublish = respond;
+      else if (action === 'read' && window.deferFollowRead) window.resolveFollowRead = respond;
       else if (action === 'read_page' && value.cursor && window.deferOlder) window.resolveOlder = respond;
       else queueMicrotask(respond);
     }
@@ -359,11 +366,24 @@ try {
   await wait(() => element('feed-cards').textContent.includes('guest-readable'));
   assert(frame.contentWindow.authorStarts === authorStarts, 'Guest started an author session.');
   assert(element('follow'), 'Missing saved follows.');
+  frame.contentWindow.deferFollowRead = true;
   element('follow').click();
-  await wait(() => element('follow-list').textContent.includes('VLD0:remote'));
+  await wait(() => frame.contentWindow.resolveFollowRead);
+  assert(element('follow-list').textContent.includes('VLD0:remote'), 'Follow was not saved before loading posts.');
+  assert(frame.contentWindow.feedReads.join(',') === 'VLD0:remote', 'Following refreshed unrelated feeds.');
+  element('nav-home').click();
+  frame.contentWindow.resolveFollowRead();
+  await wait(() => element('timeline').textContent.includes('guest-readable') && !element('follow').disabled);
+  frame.contentWindow.deferFollowRead = false;
+  assert(!element('view-home').hidden, 'Automatic follow loading changed navigation.');
   element('follow').click();
   await wait(() => !element('follow').disabled);
   assert(element('follow-list').querySelectorAll('li').length === 2, 'Duplicate follow was saved.');
+  element('key').value = 'VLD0:existing';
+  element('follow').click();
+  await wait(() => !element('follow').disabled && /saved.*could not.*load/i.test(element('follow-status').textContent));
+  assert(element('follow-list').querySelectorAll('li').length === 2, 'Read failure removed a saved follow.');
+  assert(element('timeline').textContent.includes('guest-readable'), 'Follow read failure erased other cached posts.');
   assert(element('refresh-timeline'), 'Missing merged timeline.');
   element('refresh-timeline').click();
   await wait(() => !element('refresh-timeline').disabled);
@@ -384,9 +404,25 @@ try {
   element('key').value = 'Offline input';
   followedAuthor.click();
   assert(element('key').value === 'Offline input', 'Offline author link started a feed read.');
+  const readsBeforeOfflineFollow = frame.contentWindow.feedReads.length;
+  element('key').value = 'VLD0:offline-follow';
+  element('follow').click();
+  await wait(() => element('follow-list').textContent.includes('VLD0:offline-follow') && !element('follow').disabled);
+  assert(frame.contentWindow.feedReads.length === readsBeforeOfflineFollow, 'Offline follow tried to read before attachment.');
+  assert(/connect/i.test(element('follow-status').textContent), 'Offline follow did not explain deferred loading.');
+  element('key').value = 'VLD0:removed-offline';
+  element('follow').click();
+  await wait(() => element('follow-list').textContent.includes('VLD0:removed-offline') && !element('follow').disabled);
+  [...element('follow-list').querySelectorAll('li')].find(item => item.textContent.includes('VLD0:removed-offline'))
+    .querySelector('button:last-child').click();
+  await wait(() => !element('follow-list').textContent.includes('VLD0:removed-offline') && !element('follow').disabled);
   element('key').value = 'VLD0:remote';
   frame.contentWindow.networkReady = true;
-  await wait(() => !element('read').disabled);
+  await wait(() => element('timeline').textContent.includes('Post loaded after connecting') && !element('read').disabled);
+  assert(!frame.contentWindow.feedReads.includes('VLD0:removed-offline'), 'Unfollowed feed was still automatically read.');
+  [...element('follow-list').querySelectorAll('li')].find(item => item.textContent.includes('VLD0:offline-follow'))
+    .querySelector('button:last-child').click();
+  await wait(() => !element('follow-list').textContent.includes('VLD0:offline-follow') && !element('follow').disabled);
   element('refresh-timeline').click();
   await wait(() => !element('refresh-timeline').disabled);
   assert(element('timeline').querySelectorAll('article').length === 1, 'Refresh duplicated cached posts.');
