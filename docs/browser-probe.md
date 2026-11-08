@@ -62,6 +62,10 @@ reading-list exports; importing keeps existing mutes too.
 Reading-list changes are serialized across tabs on this origin. Other active
 tabs update their follows, mute preferences and cached timeline when these
 preferences change. This does not synchronize different devices or publishers.
+**Node diagnostics** reports the session role, application readiness, last
+reported SDK attachment, reliable/live routing peers, traffic and pending
+requests. Peer counts are not a list of active socket connections. The timestamp
+marks the last successful sample; diagnostics never imply a feed is reachable.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.

@@ -388,6 +388,11 @@ impl BrowserNode {
             "ready": state.attachment.public_internet_ready,
             "protected": self.protected,
             "reader": self.reader,
+            "attachment": state.attachment.state.to_string(),
+            "live_peers": state.attachment.live_peer_count.to_string(),
+            "reliable_peers": state.attachment.reliable_peer_count.to_string(),
+            "download_bps": state.network.bps_down.to_string(),
+            "upload_bps": state.network.bps_up.to_string(),
         }))?)
         .map_err(|_| error("JSON encoding failed"))
     }

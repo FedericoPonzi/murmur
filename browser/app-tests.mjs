@@ -26,7 +26,8 @@ function installWorker() {
       const results = {
         has_storage: false, create: { starts: 1, protected: true, identity },
         restore: { starts: 2, protected: true, identity },
-        status: { ready: window.networkReady }, identity: identity.record_key,
+        status: { ready: window.networkReady, attachment: window.networkReady ? 'AttachedStrong' : 'Attaching',
+          live_peers: '7', reliable_peers: '4', download_bps: '1200', upload_bps: '32' }, identity: identity.record_key,
         reconcile: identity, stop: 'Stopped.',
         backup: '{"header":{"version":1},"ciphertext":[1]}',
         verify_backup: identity.record_key,
@@ -79,6 +80,9 @@ try {
   await wait(() => element('draft-status')?.textContent === 'Draft saved on this browser.');
   frame.contentWindow.networkReady = true;
   await wait(() => !element('publish').disabled);
+  assert(element('debug-session').textContent === 'Author', 'Diagnostics misidentified the session.');
+  assert(element('debug-attachment').textContent === 'AttachedStrong', 'SDK attachment was not displayed.');
+  assert(element('debug-peers').textContent.includes('7'), 'Routing peer counts were not displayed.');
   assert(element('content').value === draft, 'Attachment erased the draft.');
   const latest = 'Text typed immediately before a failed publish';
   element('content').value = latest;
@@ -142,6 +146,7 @@ try {
   element('browse-start').click();
   await wait(() => !element('session').hidden);
   assert(element('identity-panel').hidden && element('author-tools').hidden, 'Guest was shown publishing tools.');
+  assert(element('debug-session').textContent === 'Read-only reader', 'Guest diagnostics claim author access.');
   await wait(() => !element('read').disabled);
   element('key').value = 'VLD0:remote';
   element('read').click();

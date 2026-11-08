@@ -7,8 +7,18 @@ let active = false, attached = false, busy = false, authenticating = true, mode 
 let publicIdentity, draftTimer, draftVersion = 0, guest = false;
 let refreshTask;
 let pendingFeed, unreadCount = 0;
+let lastNodeState, lastChecked;
 const feedProgress = new Map();
 const requests = new Map();
+const renderDiagnostics = () => {
+  $('debug-session').textContent = active ? guest ? 'Read-only reader' : 'Author' : authenticating ? 'Starting' : 'Stopped';
+  $('debug-connection').textContent = active ? attached ? 'Online' : 'Connecting / offline' : 'Stopped';
+  $('debug-attachment').textContent = lastNodeState?.attachment ?? 'Not reported';
+  $('debug-peers').textContent = lastNodeState ? `${lastNodeState.reliable_peers} / ${lastNodeState.live_peers}` : 'Not reported';
+  $('debug-traffic').textContent = lastNodeState ? `${lastNodeState.download_bps} / ${lastNodeState.upload_bps} B/s` : 'Not reported';
+  $('debug-checked').textContent = lastChecked ? lastChecked.toLocaleTimeString() : 'Not yet checked';
+  $('debug-requests').textContent = String(requests.size);
+};
 const mutateReading = operation => {
   const run = generation;
   return navigator.locks.request('murmur-reading-list', () => {
@@ -72,6 +82,7 @@ const showFeed = result => {
   }
 };
 const controls = () => {
+  renderDiagnostics();
   $('follow').disabled = !active || busy;
   $('export-reading').disabled = $('import-reading').disabled = !active || busy;
   $('share-feed').disabled = !active || busy;
@@ -346,6 +357,7 @@ const finish = message => {
     request.reject(new Error(message));
   }
   requests.clear();
+  lastNodeState = lastChecked = undefined;
   active = attached = busy = authenticating = false;
   guest = false;
   for (const id of ['profile-name', 'profile-bio', 'own-key', 'feed', 'feed-cards', 'authored-history', 'draft-status', 'storage', 'follow-list', 'follow-status', 'timeline', 'feed-status']) $(id).textContent = '';
@@ -373,6 +385,7 @@ const makeWorker = () => {
     }
     clearTimeout(request.timer);
     requests.delete(data.id);
+    renderDiagnostics();
     if (data.error) request.reject(new Error(data.error));
     else request.resolve(data.result);
   };
@@ -386,10 +399,12 @@ const call = (action, value, timeout = 180000) => new Promise((resolve, reject) 
       : 'Operation timed out. Identity locked; unlock to retry.');
   }, timeout);
   requests.set(id, { resolve, reject, timer });
+  renderDiagnostics();
   try { worker.postMessage({ id, action, value, bootstrap: $('bootstrap').value }); }
   catch (failure) {
     clearTimeout(timer);
     requests.delete(id);
+    renderDiagnostics();
     reject(failure);
   }
 });
@@ -402,6 +417,9 @@ const watchAttachment = run => {
     try {
       const state = await call('status');
       if (run !== generation || busy) return;
+      lastNodeState = state;
+      lastChecked = new Date();
+      renderDiagnostics();
       if (state.ready && !attached) {
         let identity;
         if (!guest) {

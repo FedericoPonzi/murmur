@@ -17,6 +17,12 @@ try {
   assert(await storage_snapshot('murmur-browser-identity') === saved, 'Key validation opened author storage.');
   const state = await node.call('read_only');
   assert(state.reader === true && !state.protected && state.identity === null, 'Guest loaded an author.');
+  const status = await node.call('status');
+  const statusKeys = ['starts', 'ready', 'protected', 'reader', 'attachment', 'live_peers', 'reliable_peers', 'download_bps', 'upload_bps'];
+  assert(Object.keys(status).sort().join() === statusKeys.sort().join(), 'Status is missing safe diagnostics or includes unexpected data.');
+  for (const key of ['attachment', 'live_peers', 'reliable_peers', 'download_bps', 'upload_bps']) {
+    assert(typeof status[key] === 'string', 'SDK diagnostic has an incompatible representation.');
+  }
   assert(await node.call('profile') === null, 'An author escaped into guest mode.');
   assert(await node.call('check_key', author.identity.record_key) === author.identity.record_key, 'Complete feed key was not preserved.');
   for (const invalid of ['invalid-key', 'VLD0::', 'VLD0:AA:AA']) {
