@@ -405,6 +405,7 @@ $('follow-selected').onclick = () => { $('key').value = selectedKey; $('follow')
 $('share-selected').onclick = () => copyFeedLink(selectedKey);
 const showMode = next => {
   mode = next;
+  $('auth-error').textContent = '';
   clearPassphrases();
   $('auth').hidden = active;
   $('session').hidden = !active;
@@ -421,7 +422,7 @@ const showMode = next => {
   $('show-restore').hidden = mode === 'restore';
   if (mode !== 'restore') $('restore-file').value = '';
 };
-const finish = message => {
+const finish = (message, failure = false) => {
   generation++;
   clearInterval(polling);
   clearTimeout(draftTimer);
@@ -454,13 +455,17 @@ const finish = message => {
   showMode(mode);
   controls();
   $('status').textContent = message;
+  if (failure) {
+    $('auth-error').textContent = message;
+    $('auth-error').focus();
+  }
 };
 const makeWorker = () => {
   if (worker) return;
   const current = new Worker('./worker.mjs', { type: 'module' });
   worker = current;
   current.onerror = event => {
-    if (worker === current) finish(`Worker failed: ${event.message}`);
+    if (worker === current) finish(`Worker failed: ${event.message}`, true);
   };
   current.onmessage = ({ data }) => {
     if (worker !== current) return;
@@ -573,11 +578,12 @@ $('browse-start').onclick = async () => {
     controls();
     $('status').textContent = 'Reader started. Connecting to Veilid...';
     watchAttachment(run);
-  } catch (failure) { if (run === generation) finish(`Reader failed: ${failure.message}`); }
+  } catch (failure) { if (run === generation) finish(`Reader failed: ${failure.message}`, true); }
 };
 const authenticate = async (action, value) => {
   const run = ++generation;
   authenticating = true;
+  $('auth-error').textContent = '';
   controls();
   const label = { create: 'Creation', unlock: 'Unlock', restore: 'Restore' }[action];
   $('status').textContent = action === 'restore'
@@ -606,7 +612,7 @@ const authenticate = async (action, value) => {
     $('status').textContent = 'Identity unlocked. Connecting to Veilid...';
     watchAttachment(run);
   } catch (failure) {
-    if (run === generation) finish(`${label} failed: ${failure.message}`);
+    if (run === generation) finish(`${label} failed: ${failure.message}`, true);
   } finally {
     value.passphrase = undefined;
     value.backup_passphrase = undefined;
@@ -872,4 +878,4 @@ try {
       $('browse-start').click();
     }
   } catch (failure) { $('status').textContent = `Invalid shared feed link: ${failure.message}`; }
-} catch (failure) { finish(`Local storage unavailable: ${failure.message}`); }
+} catch (failure) { finish(`Local storage unavailable: ${failure.message}`, true); }

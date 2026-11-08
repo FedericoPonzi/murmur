@@ -65,7 +65,9 @@ if (typeof self !== 'undefined') {
             const namespace = readerStart ? 'murmur-browser-reader'
               : protectedStart ? 'murmur-browser-identity' : 'murmur-browser-probe';
             running = navigator.locks.request(namespace, { ifAvailable: true }, async lock => {
-              if (!lock) throw new Error('Another tab owns the probe. Stop it before starting this tab.');
+              if (!lock) throw new Error(readerStart
+                ? 'A reader is active in another tab. Choose Stop reading there, or close that tab, then retry here.'
+                : 'This identity is active in another tab. Choose Logout there, or close that tab, then retry here. Your identity is unchanged.');
               const stopped = new Promise(done => { release = done; });
               const wasm = await import('./pkg/murmur_browser.js');
               await wasm.default();

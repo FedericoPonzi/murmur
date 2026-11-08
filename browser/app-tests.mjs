@@ -53,7 +53,8 @@ function installWorker() {
             next: bottom > 6 ? { anchor: 105, before: bottom } : null };
         }
       }
-      const error = action === 'restore' && value.backup_passphrase !== 'disposable backup passphrase'
+      const error = action === 'unlock' && window.failUnlock ? 'This identity is active in another tab. Choose Logout there, then retry here.'
+        : action === 'restore' && value.backup_passphrase !== 'disposable backup passphrase'
         ? 'Wrong passphrase or damaged credential envelope'
         : action === 'draft' && window.failDraft ? 'Storage unavailable'
         : action === 'publish' ? 'Network temporarily unavailable'
@@ -86,6 +87,16 @@ try {
   document.body.append(frame);
   const element = id => frame.contentDocument.getElementById(id);
   await wait(() => element('start') && !element('start').disabled);
+  frame.contentWindow.failUnlock = true;
+  element('show-unlock').click();
+  element('unlock-passphrase').value = 'disposable passphrase';
+  element('unlock-form').requestSubmit();
+  await wait(() => element('status').textContent.startsWith('Unlock failed'));
+  assert(element('auth-error')?.textContent.includes('another tab'), 'Unlock failure is not beside the form.');
+  assert(!element('unlock-start').disabled, 'Unlock cannot be retried after a tab conflict.');
+  frame.contentWindow.failUnlock = false;
+  frame.contentWindow.authorStarts = 0;
+  element('show-create').click();
   element('author-name').value = 'Disposable author';
   element('passphrase').value = element('confirm-passphrase').value = 'disposable passphrase';
   element('acknowledge').checked = true;

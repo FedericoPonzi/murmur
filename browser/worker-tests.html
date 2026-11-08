@@ -2,6 +2,7 @@
 <html lang="en">
 <meta charset="utf-8">
 <title>Murmur worker checks</title>
+<img src="/__check_wait" alt="" hidden>
 <output id="result">running</output>
 <script type="module">
 import { checkEnvironment } from './worker.mjs';
@@ -26,9 +27,35 @@ try {
   for (const value of ['https://example.org/ws', 'wss://example.org/ws', 'invalid', 'ws://user:secret@example.org/ws', 'ws://example.org/ws#fragment']) {
     rejects(environment, value, /bootstrap/i);
   }
+  let release, acquired;
+  const ready = new Promise(resolve => { acquired = resolve; });
+  const held = navigator.locks.request('murmur-browser-identity', async () => {
+    acquired();
+    await new Promise(resolve => { release = resolve; });
+  });
+  await ready;
+  const worker = new Worker('./worker.mjs', { type: 'module' });
+  try {
+    const response = new Promise(resolve => {
+      worker.onmessage = ({ data }) => { if (data.id === 41) resolve(data); };
+    });
+    worker.postMessage({ id: 41, action: 'create', bootstrap,
+      value: { passphrase: 'disposable passphrase', author_name: 'Disposable', bio: '' } });
+    const result = await response;
+    if (!/another tab/i.test(result.error) || !/Logout/.test(result.error)) {
+      throw new Error(`Tab conflict is not actionable: ${result.error}`);
+    }
+    const stopped = new Promise(resolve => {
+      worker.onmessage = ({ data }) => { if (data.id === 42) resolve(data); };
+    });
+    worker.postMessage({ id: 42, action: 'stop' });
+    if ((await stopped).error) throw new Error('Failed startup wedged the worker queue.');
+  } finally { worker.terminate(); release(); await held; }
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.message}`;
+} finally {
+  await fetch('/__check_done');
 }
 </script>
 </html>
