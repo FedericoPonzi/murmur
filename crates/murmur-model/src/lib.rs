@@ -26,12 +26,28 @@ pub struct Feed {
     pub posts: Vec<Post>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PageCursor {
+    pub anchor: u64,
+    pub before: u64,
+}
+
+#[derive(Serialize)]
+pub struct FeedPage {
+    #[serde(flatten)]
+    pub feed: Feed,
+    pub next: Option<PageCursor>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelError {
     InvalidContent,
     InvalidProfile,
     InvalidSchema,
     IndexExhausted,
+    InvalidCursor,
+    CursorExpired,
 }
 
 impl std::fmt::Display for ModelError {
@@ -45,6 +61,8 @@ impl std::fmt::Display for ModelError {
                 "incompatible feed schema (expected 101 owner-only SMPL subkeys)"
             }
             Self::IndexExhausted => "post index exhausted",
+            Self::InvalidCursor => "invalid feed page cursor",
+            Self::CursorExpired => "retained feed window changed; refresh the feed",
         })
     }
 }
@@ -62,6 +80,38 @@ pub fn recent_indexes(latest: Option<u64>) -> Vec<u64> {
             .rev()
             .collect(),
     }
+}
+
+pub fn page_indexes(
+    latest: Option<u64>,
+    cursor: Option<PageCursor>,
+) -> Result<(Vec<u64>, Option<PageCursor>), ModelError> {
+    let Some(latest) = latest else {
+        return if cursor.is_some() {
+            Err(ModelError::CursorExpired)
+        } else {
+            Ok((vec![], None))
+        };
+    };
+    let anchor = cursor.map_or(latest, |cursor| cursor.anchor);
+    let floor = anchor.saturating_sub(CAPACITY - 1);
+    let top = if let Some(cursor) = cursor {
+        if cursor.before == 0 || cursor.before > anchor || cursor.before <= floor {
+            return Err(ModelError::InvalidCursor);
+        }
+        cursor.before - 1
+    } else {
+        latest
+    };
+    let bottom = top.saturating_sub(FEED_LIMIT - 1).max(floor);
+    if anchor > latest || bottom < latest.saturating_sub(CAPACITY - 1) {
+        return Err(ModelError::CursorExpired);
+    }
+    let next = (bottom > floor).then_some(PageCursor {
+        anchor,
+        before: bottom,
+    });
+    Ok(((bottom..=top).rev().collect(), next))
 }
 
 pub fn next_index(latest: Option<u64>) -> Result<u64, ModelError> {
@@ -113,6 +163,65 @@ mod tests {
             (86..=105).rev().collect::<Vec<_>>()
         );
         assert_eq!(recent_indexes(Some(u64::MAX)).len(), 20);
+    }
+
+    #[test]
+    fn paginates_only_the_anchored_retained_window() {
+        assert_eq!(page_indexes(None, None).unwrap(), (vec![], None));
+        for latest in [0, 19, 20, 99, 105, u64::MAX] {
+            let mut cursor = None;
+            let mut all = vec![];
+            loop {
+                let (indexes, next) = page_indexes(Some(latest), cursor).unwrap();
+                assert!(indexes.len() <= FEED_LIMIT as usize);
+                all.extend(indexes);
+                cursor = next;
+                if cursor.is_none() {
+                    break;
+                }
+            }
+            assert_eq!(
+                all,
+                (latest.saturating_sub(CAPACITY - 1)..=latest)
+                    .rev()
+                    .collect::<Vec<_>>()
+            );
+        }
+        let (_, cursor) = page_indexes(Some(105), None).unwrap();
+        let (indexes, _) = page_indexes(Some(110), cursor).unwrap();
+        assert_eq!(indexes, (66..=85).rev().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn rejects_invalid_and_overwritten_page_cursors() {
+        for before in [0, 6, 106] {
+            assert_eq!(
+                page_indexes(
+                    Some(105),
+                    Some(PageCursor {
+                        anchor: 105,
+                        before
+                    })
+                ),
+                Err(ModelError::InvalidCursor)
+            );
+        }
+        let cursor = Some(PageCursor {
+            anchor: 105,
+            before: 26,
+        });
+        assert_eq!(
+            page_indexes(Some(110), cursor),
+            Err(ModelError::CursorExpired)
+        );
+        assert_eq!(page_indexes(None, cursor), Err(ModelError::CursorExpired));
+        assert_eq!(
+            page_indexes(Some(104), cursor),
+            Err(ModelError::CursorExpired)
+        );
+        assert!(
+            serde_json::from_str::<PageCursor>(r#"{"anchor":105,"before":26,"extra":1}"#).is_err()
+        );
     }
 
     #[test]

@@ -73,6 +73,8 @@ impl From<ModelError> for Error {
             ModelError::InvalidProfile => 500,
             ModelError::InvalidSchema => 502,
             ModelError::IndexExhausted => 409,
+            ModelError::InvalidCursor => 400,
+            ModelError::CursorExpired => 410,
         };
         Self::new(status, error.to_string())
     }
