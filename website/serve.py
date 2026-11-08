@@ -166,7 +166,7 @@ class PreviewHandler(SimpleHTTPRequestHandler):
             connection.close()
 
 
-def create_preview_server(root=None, bridge=None, port=8000):
+def create_preview_server(root=None, bridge=None, port=8000, host="127.0.0.1"):
     root = Path(root or Path(__file__).parent / "output").resolve(strict=True)
     if bridge:
         bridge = urlsplit(bridge)
@@ -174,10 +174,10 @@ def create_preview_server(root=None, bridge=None, port=8000):
                 or bridge.path not in ("", "/") or bridge.query or bridge.fragment:
             raise ValueError("Configure a read-only bridge origin without credentials, path, query, or fragment.")
         bridge.port
-    return ThreadingHTTPServer(("127.0.0.1", port), partial(PreviewHandler, directory=str(root), bridge=bridge or None))
+    return ThreadingHTTPServer((host, port), partial(PreviewHandler, directory=str(root), bridge=bridge or None))
 
 
-if __name__ == "__main__":
+def main():
     port = int(os.environ.get("PORT", "8000"))
     if not 1 <= port <= 65535:
         raise ValueError("PORT must be between 1 and 65535.")
@@ -186,9 +186,15 @@ if __name__ == "__main__":
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, stop)
-    with create_preview_server(bridge=os.environ.get("MURMUR_BRIDGE_URL"), port=port) as server:
+    with create_preview_server(bridge=os.environ.get("MURMUR_BRIDGE_URL"), port=port, host="0.0.0.0") as server:
         print(f"Local preview: http://localhost:{port}/app/", flush=True)
+        print(f"LAN preview: http://<this-computer-LAN-IP>:{port}/app/ (listening on 0.0.0.0)", flush=True)
+        print("Use a trusted network. Phone identity/node features need USB localhost or HTTPS/WSS, not LAN HTTP.", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
             pass
+
+
+if __name__ == "__main__":
+    main()

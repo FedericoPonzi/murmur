@@ -79,7 +79,8 @@ python3 website/build.py --with-app
 python3 website/serve.py
 ```
 
-Open `/app/` on the same local origin. The server binds only to `127.0.0.1`,
+Open `/app/` on the same local origin. The CLI server binds to `0.0.0.0`
+(all interfaces; use a trusted network),
 serves worker modules and WASM with their required MIME types, and disables
 asset caching during development. `PORT` overrides 8000.
 
@@ -102,7 +103,7 @@ python3 website/package.py --output /tmp/murmur-local-preview.zip
 
 Use normal WASM bindings, not the `vault-tests` build. Packaging rejects test
 exports, extra assets, symlinks, and missing license notices. The ZIP includes
-a localhost-only Python server, source/toolchain provenance, checksums, and
+a LAN-accessible Python server, source/toolchain provenance, checksums, and
 dependency licenses with exact source-download links. It contains no local
 identity data or private plans. CI uploads it only after the WASM checks pass.
 Fetching first supplies the full workspace metadata needed for offline notices,

@@ -145,7 +145,13 @@ that window, not a permanent archive. There is no 100-post network-wide cap.
 
 The probe requires IndexedDB, module workers, and Web Locks for exclusive access
 to its storage. Desktop localhost provides the necessary browser context.
-Plain LAN HTTP often lacks Web Locks and is rejected explicitly.
+`python3 website/serve.py` (or packaged `python3 serve.py`) listens on
+`0.0.0.0:8000`. On the same Wi-Fi, open
+`http://<your-computer-LAN-IP>:8000/app/` to check layout; allow inbound TCP 8000
+on your trusted LAN if your firewall blocks it. Do not expose this development
+server to the public Internet. Plain LAN HTTP lacks the secure context needed
+for identity/node features and is rejected explicitly. Use USB localhost below
+or a correctly configured HTTPS/WSS deployment for those features.
 
 On an Android phone connected by USB with debugging enabled:
 
@@ -168,8 +174,9 @@ Only public status, keys, and feeds cross the worker boundary.
 New browser identities use passphrase-protected device keys and encrypted table
 values. The earlier unpassworded developer namespace is left untouched, not
 imported into the new identity. By default, reloading starts locked.
-Choose **Stay logged in on this device** before **Unlock identity** (or before
-creating/restoring an identity) once on a trusted browser. It is off by default.
+**Stay logged in on this device** is selected by default when unlocking,
+creating or restoring an identity. Uncheck it on shared or untrusted devices
+to require your passphrase when returning.
 Then **Open app**, `/app/` and `/app/index.html` on the same origin restore access
 after reloads and browser restarts without asking for the passphrase. Use the
 same browser profile, scheme, hostname and port: `localhost` and `127.0.0.1` do

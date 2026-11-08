@@ -14,6 +14,7 @@ from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urljoin, urlsplit
 
+import serve
 from serve import create_preview_server
 from build import APP_ASSETS, publish, release_id
 
@@ -326,6 +327,19 @@ class ServerTests(unittest.TestCase):
         status, headers, body = self.request("/app/pkg/node.wasm")
         self.assertEqual((status, headers["Content-Type"], body), (200, "application/wasm", WASM))
         self.assertEqual(self.request("/app/pkg/node.wasm", "HEAD")[2], b"")
+
+    def test_explicit_lan_binding_serves_the_site(self):
+        server = self.start(create_preview_server(self.root, port=0, host="0.0.0.0"))
+        self.assertEqual(server.server_address[0], "0.0.0.0")
+        self.assertIn(b"Probe", self.request("/app/", server=server)[2])
+        self.assertEqual(self.preview.server_address[0], "127.0.0.1")
+
+    def test_cli_defaults_to_lan_binding(self):
+        with patch("serve.create_preview_server") as create, patch("serve.signal.signal"), \
+                patch.dict("os.environ", {"PORT": "8000", "MURMUR_BRIDGE_URL": ""}):
+            serve.main()
+        create.assert_called_once_with(bridge="", port=8000, host="0.0.0.0")
+        create.return_value.__enter__.return_value.serve_forever.assert_called_once_with()
 
     def test_private_and_malformed_paths(self):
         for path in ("/..%2fmurmur_config.json", "/private-link", "/missing"):

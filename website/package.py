@@ -32,8 +32,11 @@ README = """Murmur local browser alpha (experimental)
 Extract this directory, open a terminal here, then run:
     python3 serve.py
 Open http://localhost:8000/app/ (Python 3.10+; no Rust or Node install needed).
-Stop with Ctrl+C. The server binds only to localhost. Keep this origin/port to
-preserve browser storage; changing them does not transfer your identity.
+Stop with Ctrl+C. The server listens on all interfaces (0.0.0.0); use a trusted
+network. On the same Wi-Fi, view http://<this-computer-LAN-IP>:8000/app/ from a
+phone. LAN HTTP is for layout checks; identity/node features need USB localhost
+or HTTPS/WSS. Keep the same origin/port to preserve browser storage; changing
+them does not transfer your identity.
 
 Use disposable identities and harmless public text. Download AND verify an
 encrypted identity backup. There is no password reset. This is a recent-post
