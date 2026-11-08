@@ -17,6 +17,8 @@ function installWorker() {
   window.Worker = class {
     postMessage({ id, action, value }) {
       value = structuredClone(value);
+      if (['create', 'unlock', 'restore'].includes(action)) window.rememberChoice = value.remember;
+      if (action === 'logout') window.loggedOut = true;
       if (['create', 'unlock', 'restore'].includes(action)) window.authorStarts++;
       if (action === 'publish') window.publishCalls = (window.publishCalls ?? 0) + 1;
       if (action === 'draft' && !window.failDraft) {
@@ -24,11 +26,11 @@ function installWorker() {
       }
       if (action === 'update_profile') Object.assign(identity, value);
       const results = {
-        has_storage: false, create: { starts: 1, protected: true, identity },
+        has_storage: false, has_remembered: false, create: { starts: 1, protected: true, identity },
         restore: { starts: 2, protected: true, identity },
         status: { ready: window.networkReady, attachment: window.networkReady ? 'AttachedStrong' : 'Attaching',
           live_peers: '7', reliable_peers: '4', download_bps: '1200', upload_bps: '32' }, identity: identity.record_key,
-        reconcile: identity, stop: 'Stopped.',
+        reconcile: identity, stop: 'Stopped.', logout: 'Logged out.',
         backup: '{"header":{"version":1},"ciphertext":[1]}',
         verify_backup: identity.record_key,
         profile: identity, update_profile: identity,
@@ -100,8 +102,12 @@ try {
   element('author-name').value = 'Disposable author';
   element('passphrase').value = element('confirm-passphrase').value = 'disposable passphrase';
   element('acknowledge').checked = true;
+  assert(element('remember-device') && !element('remember-device').checked, 'Remembering is not opt-in.');
+  element('remember-device').checked = true;
   element('create-form').requestSubmit();
   await wait(() => !element('session').hidden);
+  assert(frame.contentWindow.rememberChoice === true, 'Remember choice did not reach authentication.');
+  assert(element('stop').textContent === 'Logout', 'Session action is still labelled Lock identity.');
   assert(element('session-sidebar').contains(element('content')), 'Composer is not in the navigation sidebar.');
   assert(element('session-sidebar').contains(element('session-diagnostics')), 'Diagnostics are not in the sidebar.');
   assert(element('follow-list').textContent.includes('VLD0:existing'), 'Author session did not load saved follows.');
@@ -109,7 +115,7 @@ try {
   element('content').value = 'An unsaved draft before connecting';
   element('content').dispatchEvent(new Event('input'));
   element('stop').click();
-  await wait(() => element('status').textContent.startsWith('Lock cancelled'));
+  await wait(() => element('status').textContent.startsWith('Logout cancelled'));
   frame.contentWindow.failDraft = false;
   const draft = 'A draft typed while connecting';
   element('content').value = draft;

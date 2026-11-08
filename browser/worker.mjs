@@ -1,3 +1,5 @@
+import { rememberSession, loadSession, hasSession, forgetSession } from './device-session.mjs';
+
 export function checkEnvironment(scope, bootstrap) {
   if (scope.location.protocol !== 'http:') throw new Error('This local probe requires HTTP hosting; HTTPS/WSS is deferred.');
   if (!scope.indexedDB) throw new Error('IndexedDB is unavailable.');
@@ -19,7 +21,7 @@ if (typeof self !== 'undefined') {
   const send = (id, result, failure) => self.postMessage({ id, result, error: failure });
   self.onmessage = ({ data }) => {
     let passphrase, backupPassphrase;
-    const authenticating = ['create', 'unlock', 'restore'].includes(data.action);
+    const authenticating = ['create', 'unlock', 'restore', 'resume'].includes(data.action);
     if (authenticating) {
       passphrase = data.value?.passphrase;
       if (data.value && typeof data.value === 'object') data.value.passphrase = undefined;
@@ -40,7 +42,12 @@ if (typeof self !== 'undefined') {
           if (typeof indexedDB.databases !== 'function') throw new Error('This browser cannot inspect local identity storage.');
           return (await indexedDB.databases()).some(database => database.name.includes('murmur-browser-identity'));
         };
-        if (data.action === 'check_key' && !node) {
+        if (data.action === 'has_remembered') {
+          send(data.id, await hasSession());
+        } else if (data.action === 'forget_session') {
+          await forgetSession();
+          send(data.id, 'Remembered access removed.');
+        } else if (data.action === 'check_key' && !node) {
           if (typeof data.value !== 'string') throw new Error('Feed key must be text.');
           const wasm = await import('./pkg/murmur_browser.js');
           await wasm.default();
@@ -52,9 +59,9 @@ if (typeof self !== 'undefined') {
           if (running) throw new Error('The probe is already running.');
           const readerStart = data.action === 'read_only';
           const protectedStart = data.action !== 'start' && !readerStart;
-          if (protectedStart && typeof passphrase !== 'string') throw new Error('Passphrase must be a string.');
+          if (protectedStart && data.action !== 'resume' && typeof passphrase !== 'string') throw new Error('Passphrase must be a string.');
           const bootstrap = checkEnvironment(self, data.bootstrap);
-          if (data.action === 'unlock' && !await hasStorage()) throw new Error('No local identity. Create one first.');
+          if (['unlock', 'resume'].includes(data.action) && !await hasStorage()) throw new Error('No local identity. Create one first.');
           if (data.action === 'create' && (typeof data.value?.author_name !== 'string' || typeof data.value?.bio !== 'string')) {
             throw new Error('Profile name and bio must be text.');
           }
@@ -73,16 +80,33 @@ if (typeof self !== 'undefined') {
               await wasm.default();
               try {
                 try {
+                  let remembered;
+                  if (data.action === 'resume') {
+                    remembered = await loadSession();
+                    if (!remembered) throw new Error('No remembered access. Enter your passphrase to unlock.');
+                    passphrase = remembered.passphrase;
+                    remembered.passphrase = undefined;
+                  }
                   if (readerStart) {
                     node = await wasm.start_reader_node(bootstrap);
                   } else if (data.action === 'create') {
                     node = await wasm.create_profile_node(bootstrap, passphrase, data.value.author_name, data.value.bio);
-                  } else if (data.action === 'unlock') {
+                  } else if (['unlock', 'resume'].includes(data.action)) {
                     node = await wasm.unlock_profile_node(bootstrap, passphrase);
                   } else if (data.action === 'restore') {
                     node = await wasm.restore_profile_node(bootstrap, data.value.backup, backupPassphrase, passphrase);
                   } else {
                     node = protectedStart ? await wasm.start_protected_node(bootstrap, passphrase) : await wasm.start_node(bootstrap);
+                  }
+                  if (authenticating) {
+                    const identity = JSON.parse(node.local_identity());
+                    if (remembered && remembered.recordKey !== identity?.record_key) {
+                      throw new Error('Remembered access belongs to a different identity. Forget this device and unlock manually.');
+                    }
+                    if (data.action !== 'resume') {
+                      if (data.value.remember) await rememberSession(passphrase, identity.record_key);
+                      else await forgetSession();
+                    }
                   }
                 } finally { passphrase = backupPassphrase = undefined; }
                 readOnly = readerStart;
@@ -101,7 +125,8 @@ if (typeof self !== 'undefined') {
             }).finally(() => { running = undefined; release = undefined; });
           });
           send(data.id, await started);
-        } else if (data.action === 'stop') {
+        } else if (['stop', 'logout'].includes(data.action)) {
+          if (data.action === 'logout') await forgetSession();
           release?.();
           await running;
           send(data.id, 'Stopped.');

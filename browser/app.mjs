@@ -142,7 +142,8 @@ const controls = () => {
     button.disabled = !active || busy;
   }
   for (const id of ['create-fields', 'unlock-fields', 'restore-fields', 'start', 'unlock-start',
-    'restore-start', 'show-create', 'show-unlock', 'show-restore', 'restore-back', 'browse-start']) $(id).disabled = authenticating || active;
+    'restore-start', 'show-create', 'show-unlock', 'show-restore', 'restore-back', 'browse-start', 'remember-device',
+    'resume-session', 'forget-device']) $(id).disabled = authenticating || active;
   for (const id of ['backup-fields', 'download-backup']) $(id).disabled = !active || guest || !attached || busy;
   for (const id of ['verify-fields', 'verify-backup']) $(id).disabled = !active || guest || busy;
   for (const id of ['profile-fields', 'save-profile']) $(id).disabled = !active || guest || !attached || busy;
@@ -585,7 +586,8 @@ const authenticate = async (action, value) => {
   authenticating = true;
   $('auth-error').textContent = '';
   controls();
-  const label = { create: 'Creation', unlock: 'Unlock', restore: 'Restore' }[action];
+  value.remember = $('remember-device').checked;
+  const label = { create: 'Creation', unlock: 'Unlock', restore: 'Restore', resume: 'Remembered unlock' }[action];
   $('status').textContent = action === 'restore'
     ? 'Restoring identity. Connecting to verify feed ownership...'
     : action === 'create' ? 'Creating your identity...' : 'Unlocking your identity...';
@@ -639,6 +641,21 @@ $('show-create').onclick = () => showMode('create');
 $('show-unlock').onclick = () => showMode('unlock');
 $('show-restore').onclick = () => showMode('restore');
 $('restore-back').onclick = () => showMode('create');
+$('resume-session').onclick = () => authenticate('resume', {});
+$('forget-device').onclick = async () => {
+  authenticating = true;
+  controls();
+  try {
+    makeWorker();
+    await call('forget_session');
+    $('remember-device').checked = false;
+    $('resume-session').hidden = $('forget-device').hidden = true;
+    $('auth-error').textContent = '';
+    $('status').textContent = 'Remembered access removed. Your identity is unchanged; enter your passphrase to unlock.';
+  } catch (failure) {
+    $('auth-error').textContent = `Could not forget this device: ${failure.message}`;
+  } finally { authenticating = false; controls(); }
+};
 const saveDraft = async () => {
   if (!active || guest || $('content').readOnly) return true;
   const run = generation, version = ++draftVersion;
@@ -770,21 +787,32 @@ $('stop').onclick = async () => {
   const run = generation;
   busy = true;
   controls();
-  $('status').textContent = 'Locking identity...';
+  $('status').textContent = 'Logging out...';
   clearTimeout(draftTimer);
   const saved = await saveDraft();
   if (run !== generation) return;
   if (!saved) {
-    if (!window.confirm(`${$('draft-status').textContent}. Lock anyway and discard the unsaved draft?`)) {
+    if (!window.confirm(`${$('draft-status').textContent}. Logout anyway and discard the unsaved draft?`)) {
       busy = false;
       controls();
-      $('status').textContent = 'Lock cancelled. Copy your unsaved draft before closing the page.';
+      $('status').textContent = 'Logout cancelled. Copy your unsaved draft before closing the page.';
       return;
     }
   }
   clearInterval(polling);
-  try { await call('stop'); finish('Identity locked.'); }
-  catch (failure) { finish(`Lock failed: ${failure.message}`); }
+  try {
+    await call('logout');
+    $('remember-device').checked = false;
+    $('resume-session').hidden = $('forget-device').hidden = true;
+    finish('Logged out. Your identity and saved work remain on this browser.');
+  } catch (failure) {
+    if (run === generation) {
+      busy = false;
+      controls();
+      watchAttachment(run);
+      $('status').textContent = `Logout failed: ${failure.message}. Remembered access may remain; retry Logout.`;
+    }
+  }
 };
 $('refresh-selected').onclick = () => { $('key').value = selectedKey; $('read').click(); };
 $('read-own').onclick = () => { $('key').value = publicIdentity.record_key; $('read').click(); };
@@ -876,6 +904,14 @@ try {
       pendingFeed = await call('check_key', requested, 30000);
       $('key').value = pendingFeed;
       $('browse-start').click();
+    } else if (exists && await call('has_remembered')) {
+      $('remember-device').checked = true;
+      $('resume-session').hidden = $('forget-device').hidden = false;
+      await authenticate('resume', {});
     }
-  } catch (failure) { $('status').textContent = `Invalid shared feed link: ${failure.message}`; }
+  } catch (failure) {
+    $('auth-error').textContent = failure.message;
+    $('status').textContent = `Startup failed: ${failure.message}`;
+    $('forget-device').hidden = false;
+  }
 } catch (failure) { finish(`Local storage unavailable: ${failure.message}`, true); }

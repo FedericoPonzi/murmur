@@ -80,6 +80,10 @@
 <p class="preview-notice">Existing identities are never replaced. If setup was interrupted, retry with the same browser passphrase.</p>
 <button id="restore-back" class="quiet-button">Back to identity setup</button>
 </div>
+<button id="resume-session" class="quiet-button" hidden>Retry remembered session</button>
+<button id="forget-device" class="quiet-button" hidden>Forget remembered access</button>
+<label class="check-line"><input id="remember-device" type="checkbox" aria-describedby="remember-help"><span>Remember this device</span></label>
+<small id="remember-help">Stay logged in after reloads and browser restarts until Logout. Only use on a trusted device: anyone with access to this browser profile can publish as you.</small>
 <button id="show-restore" class="quiet-button" disabled>Restore from encrypted backup</button>
 <button id="browse-start" class="quiet-button" disabled>Read without an identity</button>
 </div>
@@ -105,9 +109,9 @@
 <button id="nav-settings" class="quiet-button" aria-controls="view-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M12 3v18M19 3v18M2 8h6M9 16h6M16 8h6"/></svg>Settings &amp; backups</button>
 </nav>
 <div id="author-session">
-<button id="stop" class="quiet-button" disabled>Lock identity</button>
+<button id="stop" class="quiet-button" disabled>Logout</button>
 <button id="reconnect" class="quiet-button" disabled>Retry connection</button>
-<p class="preview-notice">Locking or closing this tab stops its node. Reloading starts locked.</p>
+<p class="preview-notice">Logout stops this node and forgets remembered access, but keeps your identity and saved work. Closing the tab stops its node; a remembered device unlocks when you return.</p>
 </div>
 <div id="reader-tools" hidden>
 <p class="eyebrow">Read-only session</p>

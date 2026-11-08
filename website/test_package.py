@@ -32,6 +32,7 @@ class BundleTests(unittest.TestCase):
             "app/app.mjs": "export const app = true;",
             "app/worker.mjs": "export const worker = true;",
             "app/feeds.mjs": "export const follows = true;",
+            "app/device-session.mjs": "export const remembered = true;",
             "app/pkg/murmur_browser.js": "export default async () => {};",
             "app/pkg/murmur_browser_bg.wasm": b"\0asm\1\0\0\0",
         }.items():

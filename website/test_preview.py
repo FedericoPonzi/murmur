@@ -60,7 +60,7 @@ class BuildTests(unittest.TestCase):
             source, target = REPOSITORY / name, self.root / name
             shutil.copytree(source, target) if source.is_dir() else shutil.copy2(source, target)
         (self.root / "browser/pkg").mkdir(parents=True)
-        for name in ("index.html", "app.mjs", "worker.mjs", "feeds.mjs", "style.css", "favicon.svg"):
+        for name in ("index.html", "app.mjs", "worker.mjs", "feeds.mjs", "device-session.mjs", "style.css", "favicon.svg"):
             shutil.copy2(REPOSITORY / "browser" / name, self.root / "browser" / name)
         (self.root / "browser/pkg/murmur_browser.js").write_text("export default async () => {};")
         (self.root / "browser/pkg/murmur_browser_bg.wasm").write_bytes(WASM)

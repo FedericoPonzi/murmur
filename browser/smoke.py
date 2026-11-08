@@ -216,7 +216,7 @@ def check(storage_only=False):
         element("content").send_keys(draft)
         wait.until(lambda _: text("draft-status") == "Draft saved on this browser.")
         click("stop")
-        wait.until(lambda _: text("status") == "Identity locked.")
+        wait.until(lambda _: text("status").startswith("Logged out."))
         assert text("own-key") == text("profile-name") == text("feed") == ""
         assert element("publish").is_enabled() is False
         driver.refresh()
@@ -286,7 +286,7 @@ def check(storage_only=False):
             wait.until(lambda _: text("status").startswith("Verified:") or "verification failed" in text("status"))
             assert text("status").startswith("Verified:"), text("status")
             click("stop")
-            wait.until(lambda _: text("status") == "Identity locked.")
+            wait.until(lambda _: text("status").startswith("Logged out."))
             root = Path(__file__).resolve().parent.parent
             combined = bool(os.environ.get("MURMUR_PREVIEW_URL"))
             restore_server = create_preview_server(root / ("website/output" if combined else "browser"), port=0)
@@ -313,7 +313,7 @@ def check(storage_only=False):
             assert [post["index"] for post in json.loads(text("feed"))["posts"]] == [2, 1, 0]
             log("PASS: downloaded backup verification, fresh-origin UI restore, and continued publication.")
             click("stop")
-            wait.until(lambda _: text("status") == "Identity locked.")
+            wait.until(lambda _: text("status").startswith("Logged out."))
             click("browse-start")
             storage(1)
             assert not element("identity-panel").is_displayed()

@@ -14,7 +14,7 @@ SITE_FILES = {
     "style.css", "favicon.svg", "LICENSE.txt",
 }
 APP_FILES = {
-    "app/app.mjs", "app/worker.mjs", "app/feeds.mjs",
+    "app/app.mjs", "app/worker.mjs", "app/feeds.mjs", "app/device-session.mjs",
     "app/pkg/murmur_browser.js", "app/pkg/murmur_browser_bg.wasm",
 }
 FALLBACKS = {
