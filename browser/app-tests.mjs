@@ -27,6 +27,7 @@ function installWorker(existing = false) {
       if (action === 'update_profile') Object.assign(identity, value);
       const results = {
         has_storage: existing, has_remembered: false, create: { starts: 1, protected: true, identity },
+        unlock: { starts: 1, protected: true, identity },
         restore: { starts: 2, protected: true, identity },
         status: { ready: window.networkReady, attachment: window.networkReady ? 'AttachedStrong' : 'Attaching',
           live_peers: '7', reliable_peers: '4', download_bps: '1200', upload_bps: '32' }, identity: identity.record_key,
@@ -92,8 +93,16 @@ try {
   document.body.append(frame);
   const element = id => frame.contentDocument.getElementById(id);
   await wait(() => element('start') && !element('start').disabled);
+  const checkRememberChoice = (form, submit) => {
+    const choice = element('remember-device');
+    assert(choice.form === element(form) && choice.checkVisibility()
+      && choice.getBoundingClientRect().top < element(submit).getBoundingClientRect().top,
+    'Staying logged in is not offered before submitting the active identity form.');
+  };
+  checkRememberChoice('create-form', 'start');
   frame.contentWindow.failUnlock = true;
   element('show-unlock').click();
+  checkRememberChoice('unlock-form', 'unlock-start');
   element('unlock-passphrase').value = 'disposable passphrase';
   element('unlock-form').requestSubmit();
   await wait(() => element('status').textContent.startsWith('Unlock failed'));
@@ -249,6 +258,8 @@ try {
   element('stop').click();
   await wait(() => !element('auth').hidden);
   element('show-restore').click();
+  checkRememberChoice('restore-form', 'restore-start');
+  element('remember-device').checked = true;
   const files = new DataTransfer();
   files.items.add(new File(['{"header":{},"ciphertext":[]}'], 'identity.murmur'));
   element('restore-file').files = files.files;
@@ -265,6 +276,7 @@ try {
   fillRestore('disposable backup passphrase');
   await wait(() => !element('session').hidden);
   assert(element('own-key').textContent === 'VLD0:disposable', 'Restore changed the identity key.');
+  assert(frame.contentWindow.rememberChoice === true, 'Restore lost the stay-logged-in choice.');
   element('stop').click();
   await wait(() => !element('auth').hidden);
   assert(element('browse-start'), 'Missing identity-free reading.');
@@ -443,6 +455,13 @@ try {
     'Manual startup can race automatic remembered-access discovery.');
   frame.contentWindow.resolveRemember();
   await wait(() => !element('unlock-start').disabled);
+  checkRememberChoice('unlock-form', 'unlock-start');
+  assert(!element('remember-device').checked, 'Manual unlock enables remembering without consent.');
+  element('remember-device').checked = true;
+  element('unlock-passphrase').value = 'disposable passphrase';
+  element('unlock-form').requestSubmit();
+  await wait(() => !element('session').hidden);
+  assert(frame.contentWindow.rememberChoice === true, 'Unlock lost the stay-logged-in choice.');
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.stack ?? failure.message}`;

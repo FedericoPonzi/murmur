@@ -21,6 +21,8 @@ Open `http://localhost:8000`. Create a profile with a passphrase, then wait for
 **Connected to Veilid** before publishing or reading. Publish one test post; read
 another RecordKey, or share your public RecordKey with the native bridge.
 After confirmation, the composer clears so you can publish another post.
+While waiting, **Posting...** and inline feedback show that confirmation is in
+progress. Failures keep the text and show the error beside the composer.
 Drafts are saved in encrypted browser storage. Wait for **Draft saved on this
 browser** before reloading. Unpublished drafts are not included in portable
 backups; interrupted publications are. **Your saved posts** shows up to 1000
@@ -166,8 +168,12 @@ Only public status, keys, and feeds cross the worker boundary.
 New browser identities use passphrase-protected device keys and encrypted table
 values. The earlier unpassworded developer namespace is left untouched, not
 imported into the new identity. By default, reloading starts locked.
-**Remember this device** is optional and restores access after reloads and
-browser restarts. It stores the unlocking passphrase and bound RecordKey wrapped
+Choose **Stay logged in on this device** before **Unlock identity** (or before
+creating/restoring an identity) once on a trusted browser. It is off by default.
+Then **Open app**, `/app/` and `/app/index.html` on the same origin restore access
+after reloads and browser restarts without asking for the passphrase. Use the
+same browser profile, scheme, hostname and port: `localhost` and `127.0.0.1` do
+not share storage. It stores the unlocking passphrase and bound RecordKey wrapped
 with AES-GCM under a non-extractable Web Crypto key in a separate IndexedDB
 database, never as plaintext or in localStorage. This is browser-profile
 convenience, not an OS login, hardware-backed vault, or protection against
@@ -221,8 +227,9 @@ and reload once to acquire this protection. Browser shutdown/suspension still
 stops or pauses networking; a remembered identity is not a background publisher.
 
 Run `python3 browser/upgrade-smoke.py` after assembling the app for an opt-in
-real-node check of tab conflicts, live updates, reload, browser restart, Logout
-and manual recovery. It uses a disposable browser profile/site and preserves
+real-node check of tab conflicts, live updates, reload, homepage Open app,
+`/app/index.html`, browser restart, Logout and manual recovery with remembering.
+It uses a disposable browser profile/site and preserves
 logs/screenshots under `/tmp/murmur-upgrade-check-*`.
 
 ## Checks

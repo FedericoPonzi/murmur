@@ -23,7 +23,7 @@ def check():
     shutil.copytree(repository / "website/output", site)
     server = create_preview_server(site, port=0)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    origin = f"http://127.0.0.1:{server.server_port}/app/"
+    origin = f"http://localhost:{server.server_port}/app/"
     driver = None
 
     def log(message):
@@ -123,12 +123,18 @@ def check():
         assert text("storage") == "2" and text("own-key") == key
         assert element("content").get_attribute("value") == draft
         assert driver.execute_script("return [...document.scripts].some(s => s.src.includes(arguments[0]))", version)
+        driver.find_element(By.CSS_SELECTOR, "#app-header .brand").click()
+        WebDriverWait(driver, 30).until(lambda _: driver.find_element(By.CSS_SELECTOR, ".nav-cta").is_displayed())
+        driver.find_element(By.CSS_SELECTOR, ".nav-cta").click()
+        ready(3)
+        assert driver.current_url == origin + "index.html"
+        assert text("own-key") == key and element("content").get_attribute("value") == draft
         driver.quit()
         driver = None
         driver = launch()
-        driver.get(origin)
-        ready(3)
-        assert text("storage") == "3" and text("own-key") == key
+        driver.get(origin + "index.html")
+        ready(4)
+        assert text("storage") == "4" and text("own-key") == key
         assert element("content").get_attribute("value") == draft
         click("stop")
         WebDriverWait(driver, 30).until(lambda _: text("status").startswith("Logged out."))
@@ -137,13 +143,17 @@ def check():
         assert not element("session").is_displayed()
         assert not element("resume-session").is_displayed()
         element("unlock-passphrase").send_keys(passphrase)
+        click("remember-device")
         click("unlock-start")
-        ready(4)
+        ready(5)
+        assert text("own-key") == key and element("content").get_attribute("value") == draft
+        driver.refresh()
+        ready(6)
         assert text("own-key") == key and element("content").get_attribute("value") == draft
         driver.save_screenshot(str(artifacts / "result.png"))
         click("stop")
         WebDriverWait(driver, 30).until(lambda _: text("status").startswith("Logged out."))
-        log("PASS: tab conflict, live rollout, reload, browser restart, Logout revocation and manual recovery.")
+        log("PASS: tab conflict, live rollout, reload, homepage Open app, /app/index.html, browser restart, Logout revocation and remembered manual recovery.")
     except Exception:
         if driver:
             log(f"UI: {text('status')}")

@@ -418,6 +418,7 @@ $('follow-selected').onclick = () => { $('key').value = selectedKey; $('follow')
 $('share-selected').onclick = () => copyFeedLink(selectedKey);
 const showMode = next => {
   mode = next;
+  $(`${mode}-form`).querySelector('button[type="submit"]').before($('remember-choice'));
   $('auth-error').textContent = '';
   clearPassphrases();
   $('auth').hidden = active;

@@ -44,6 +44,10 @@
 <label for="confirm-passphrase">Confirm passphrase</label>
 <input id="confirm-passphrase" type="password" autocomplete="new-password" required>
 <label class="check-line"><input id="acknowledge" type="checkbox" required><span>I understand that losing my passphrase or browser data loses this identity.</span></label>
+<div id="remember-choice">
+<label class="check-line"><input id="remember-device" type="checkbox" aria-describedby="remember-help"><span>Stay logged in on this device</span></label>
+<small id="remember-help">Skip the passphrase after reloads and browser restarts, until Logout. Only use on a trusted device: anyone with access to this browser profile can publish as you.</small>
+</div>
 <button id="start" type="submit" disabled>Create identity</button>
 </fieldset>
 </form>
@@ -52,7 +56,9 @@
 <div id="unlock-panel" hidden>
 <p class="eyebrow">Welcome back</p>
 <h2>Unlock your identity</h2>
-<p>Your identity stays on this browser. Enter your passphrase to start its node.</p>
+<p>Your identity stays in this browser. To skip the passphrase next time, choose <strong>Stay logged in on this device</strong> before unlocking.</p>
+<button id="resume-session" class="quiet-button" hidden>Retry remembered session</button>
+<button id="forget-device" class="quiet-button" hidden>Forget remembered access</button>
 <form id="unlock-form">
 <fieldset id="unlock-fields" disabled>
 <label for="unlock-passphrase">Passphrase</label>
@@ -84,10 +90,6 @@
 <p class="preview-notice">Existing identities are never replaced. If setup was interrupted, retry with the same browser passphrase.</p>
 <button id="restore-back" class="quiet-button">Back to identity setup</button>
 </div>
-<button id="resume-session" class="quiet-button" hidden>Retry remembered session</button>
-<button id="forget-device" class="quiet-button" hidden>Forget remembered access</button>
-<label class="check-line"><input id="remember-device" type="checkbox" aria-describedby="remember-help"><span>Remember this device</span></label>
-<small id="remember-help">Stay logged in after reloads and browser restarts until Logout. Only use on a trusted device: anyone with access to this browser profile can publish as you.</small>
 <button id="show-restore" class="quiet-button" disabled>Restore from encrypted backup</button>
 <button id="browse-start" class="quiet-button" disabled>Read without an identity</button>
 </div>
