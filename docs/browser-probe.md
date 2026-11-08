@@ -73,6 +73,12 @@ key, profile editing and saved history; guests do not get an author profile.
 feed with its own Follow and Share actions. **Settings & backups** separates
 encrypted identity backups from public reading-list files. Navigation does not
 restart the node or clear the composer.
+The desktop app keeps the composer, navigation, connection status and expandable
+node diagnostics in a left sidebar, with the selected feed on the right.
+On narrow screens the sidebar stacks above the feed; **Back to navigation**
+returns to its controls. Guest sessions have the same reading navigation but
+no composer or author tools. Freshness/errors and the last raw response remain
+available in expandable diagnostics rather than filling the feed.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.

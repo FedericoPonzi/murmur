@@ -130,6 +130,15 @@ def check(storage_only=False):
         for width in (390, 320, 1280):
             driver.set_window_size(width, 900)
             assert driver.execute_script("return document.documentElement.scrollWidth <= innerWidth")
+            assert driver.execute_script("""
+                const sidebar = document.getElementById('session-sidebar');
+                const content = document.getElementById('session-content');
+                const left = sidebar.getBoundingClientRect(), right = content.getBoundingClientRect();
+                return sidebar.contains(document.getElementById('author-tools'))
+                    && sidebar.contains(document.getElementById('session-diagnostics'))
+                    && sidebar.contains(document.getElementById('status'))
+                    && (innerWidth > 760 ? left.right <= right.left : left.bottom <= right.top);
+            """), f"Social sidebar/feed layout is not usable at {width}px."
         if not storage_only:
             wait.until(lambda _: element("read").is_enabled())
             click("read")

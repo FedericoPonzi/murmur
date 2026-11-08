@@ -12,6 +12,9 @@ let currentView = 'home', selectedKey;
 const feedProgress = new Map();
 const requests = new Map();
 const renderDiagnostics = () => {
+  $('session-name').textContent = publicIdentity?.author_name ?? 'Read-only reader';
+  $('session-avatar').textContent = publicIdentity ? Array.from(publicIdentity.author_name.trim())[0]?.toLocaleUpperCase() ?? 'M' : 'M';
+  $('connection-badge').textContent = active ? attached ? 'Connected to Veilid' : 'Connecting / offline' : 'Local preview';
   $('debug-session').textContent = active ? guest ? 'Read-only reader' : 'Author' : authenticating ? 'Starting' : 'Stopped';
   $('debug-connection').textContent = active ? attached ? 'Online' : 'Connecting / offline' : 'Stopped';
   $('debug-attachment').textContent = lastNodeState?.attachment ?? 'Not reported';
@@ -52,7 +55,17 @@ const postCard = (post, author) => {
   if (Number.isFinite(date.getTime())) timestamp.dateTime = date.toISOString();
   const content = document.createElement('p');
   content.textContent = post.content;
-  article.append(name, timestamp, content);
+  const avatar = document.createElement('span');
+  avatar.className = 'avatar post-avatar';
+  avatar.setAttribute('aria-hidden', 'true');
+  avatar.textContent = Array.from(author)[0]?.toLocaleUpperCase() ?? 'M';
+  const body = document.createElement('div');
+  body.className = 'post-body';
+  const heading = document.createElement('div');
+  heading.className = 'post-heading';
+  heading.append(name, timestamp);
+  body.append(heading, content);
+  article.append(avatar, body);
   return article;
 };
 const showIdentity = identity => {
@@ -142,7 +155,10 @@ const renderFollows = follows => {
     remove.textContent = 'Unfollow';
     remove.setAttribute('aria-label', `Unfollow ${key}`);
     remove.onclick = () => changeReading(storage => removeFollow(storage, key), 'Feed removed from your follows.');
-    item.append(label, read, mute, remove);
+    const actions = document.createElement('div');
+    actions.className = 'follow-actions';
+    actions.append(read, mute, remove);
+    item.append(label, actions);
     return item;
   }));
   $('reset-follows').hidden = true;
@@ -159,10 +175,12 @@ const renderTimeline = () => {
   $('unread-count').textContent = `${unreadCount} unread cached posts`;
   $('timeline').replaceChildren(...entries.map(entry => {
     const article = postCard(entry.post, entry.metadata.author_name);
+    const body = article.querySelector('.post-body');
     if (entry.unread) {
       const badge = document.createElement('small');
       badge.textContent = 'Unread';
-      article.prepend(badge);
+      badge.className = 'unread-badge';
+      body.prepend(badge);
     }
     const read = document.createElement('button');
     read.type = 'button';
@@ -171,11 +189,11 @@ const renderTimeline = () => {
     read.title = entry.key;
     read.disabled = !active || !attached || busy;
     read.onclick = () => { $('key').value = entry.key; $('read').click(); };
-    article.append(read);
+    body.append(read);
     if (entry.local) {
       const local = document.createElement('small');
       local.textContent = 'Confirmed on this browser';
-      article.append(local);
+      body.append(local);
     }
     return article;
   }));
@@ -349,10 +367,14 @@ for (const name of ['home', 'profile', 'following', 'settings']) {
   $(`nav-${name}`).onclick = () => {
     showView(name);
     if (name === 'following') $('key').focus();
-    else $(`view-${currentView}`).querySelector('h1')?.focus({ preventScroll: true });
+    else $(`view-${currentView}`).querySelector('h1')?.focus({ preventScroll: matchMedia('(min-width: 761px)').matches });
   };
 }
 $('back-home').onclick = () => $('nav-home').click();
+$('sidebar-jump').onclick = () => {
+  $('session-sidebar').scrollIntoView({ block: 'start' });
+  $(`nav-${currentView === 'feed' ? 'home' : currentView}`).focus({ preventScroll: true });
+};
 $('follow-selected').onclick = () => { $('key').value = selectedKey; $('follow').click(); };
 $('share-selected').onclick = () => copyFeedLink(selectedKey);
 const showMode = next => {
@@ -360,10 +382,11 @@ const showMode = next => {
   clearPassphrases();
   $('auth').hidden = active;
   $('session').hidden = !active;
-  $('session').classList.toggle('reader-session', guest);
   for (const id of ['identity-panel', 'author-tools', 'history-tools']) $(id).hidden = guest;
   $('reader-tools').hidden = !guest;
   $('author-session').hidden = $('nav-profile').hidden = $('backup-settings').hidden = guest;
+  $(active ? 'sidebar-status' : 'auth-status').append($('status'));
+  $(active ? 'network-settings-slot' : 'auth-settings').append($('connection-settings'));
   showView(currentView);
   if (active) loadFollowView();
   $('create-panel').hidden = mode !== 'create';

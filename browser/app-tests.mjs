@@ -67,6 +67,8 @@ try {
   element('acknowledge').checked = true;
   element('create-form').requestSubmit();
   await wait(() => !element('session').hidden);
+  assert(element('session-sidebar').contains(element('content')), 'Composer is not in the navigation sidebar.');
+  assert(element('session-sidebar').contains(element('session-diagnostics')), 'Diagnostics are not in the sidebar.');
   assert(element('follow-list').textContent.includes('VLD0:existing'), 'Author session did not load saved follows.');
   frame.contentWindow.failDraft = true;
   element('content').value = 'An unsaved draft before connecting';
