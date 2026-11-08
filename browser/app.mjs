@@ -828,7 +828,7 @@ $('stop').onclick = async () => {
   clearInterval(polling);
   try {
     await call('logout');
-    $('remember-device').checked = false;
+    $('remember-device').checked = $('remember-device').defaultChecked;
     $('resume-session').hidden = $('forget-device').hidden = true;
     finish('Logged out. Your identity and saved work remain on this browser.');
   } catch (failure) {

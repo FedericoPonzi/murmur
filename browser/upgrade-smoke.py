@@ -67,7 +67,7 @@ def check():
         for identity in ("passphrase", "confirm-passphrase"):
             element(identity).send_keys(passphrase)
         click("acknowledge")
-        click("remember-device")
+        assert element("remember-device").is_selected()
         click("start")
         ready(1)
         key = text("own-key")
@@ -142,18 +142,27 @@ def check():
         WebDriverWait(driver, 30).until(lambda _: element("unlock-start").is_enabled())
         assert not element("session").is_displayed()
         assert not element("resume-session").is_displayed()
+        assert element("remember-device").is_selected()
         element("unlock-passphrase").send_keys(passphrase)
         click("remember-device")
         click("unlock-start")
         ready(5)
         assert text("own-key") == key and element("content").get_attribute("value") == draft
         driver.refresh()
+        WebDriverWait(driver, 30).until(lambda _: element("unlock-start").is_enabled())
+        assert not element("session").is_displayed()
+        assert not element("resume-session").is_displayed()
+        assert element("remember-device").is_selected()
+        element("unlock-passphrase").send_keys(passphrase)
+        click("unlock-start")
         ready(6)
+        driver.refresh()
+        ready(7)
         assert text("own-key") == key and element("content").get_attribute("value") == draft
         driver.save_screenshot(str(artifacts / "result.png"))
         click("stop")
         WebDriverWait(driver, 30).until(lambda _: text("status").startswith("Logged out."))
-        log("PASS: tab conflict, live rollout, reload, homepage Open app, /app/index.html, browser restart, Logout revocation and remembered manual recovery.")
+        log("PASS: default remembered access, explicit opt-out, tab conflict, live rollout, reload, homepage Open app, /app/index.html, browser restart, Logout revocation and manual recovery.")
     except Exception:
         if driver:
             log(f"UI: {text('status')}")

@@ -45,7 +45,7 @@
 <input id="confirm-passphrase" type="password" autocomplete="new-password" required>
 <label class="check-line"><input id="acknowledge" type="checkbox" required><span>I understand that losing my passphrase or browser data loses this identity.</span></label>
 <div id="remember-choice">
-<label class="check-line"><input id="remember-device" type="checkbox" aria-describedby="remember-help"><span>Stay logged in on this device</span></label>
+<label class="check-line"><input id="remember-device" type="checkbox" checked aria-describedby="remember-help"><span>Stay logged in on this device</span></label>
 <small id="remember-help">Skip the passphrase after reloads and browser restarts, until Logout. Only use on a trusted device: anyone with access to this browser profile can publish as you.</small>
 </div>
 <button id="start" type="submit" disabled>Create identity</button>
@@ -56,7 +56,7 @@
 <div id="unlock-panel" hidden>
 <p class="eyebrow">Welcome back</p>
 <h2>Unlock your identity</h2>
-<p>Your identity stays in this browser. To skip the passphrase next time, choose <strong>Stay logged in on this device</strong> before unlocking.</p>
+<p>Your identity stays in this browser. <strong>Stay logged in on this device</strong> is selected so you won't need the passphrase next time. Uncheck it on shared devices.</p>
 <button id="resume-session" class="quiet-button" hidden>Retry remembered session</button>
 <button id="forget-device" class="quiet-button" hidden>Forget remembered access</button>
 <form id="unlock-form">
@@ -119,10 +119,14 @@
 <span id="composer-avatar" class="avatar composer-avatar" aria-hidden="true">M</span>
 <label for="content" class="visually-hidden">What's on your mind?</label>
 <textarea id="content" maxlength="8000" placeholder="What's on your mind?" aria-describedby="content-help content-count draft-status"></textarea>
+<div class="composer-footer">
+<div class="composer-notes">
 <small id="content-help">Public posts. Up to 280 characters.</small>
-<div class="composer-footer"><output id="content-count" aria-live="polite">0 / 280</output><button id="publish" disabled>Post</button></div>
-<small id="publish-status" role="status"></small>
 <small id="draft-status" role="status"></small>
+</div>
+<div class="composer-actions"><output id="content-count" aria-live="polite">0 / 280</output><button id="publish" disabled>Post</button></div>
+</div>
+<small id="publish-status" role="status"></small>
 </div>
 <div class="feed-toolbar">
 <button id="refresh-timeline" class="quiet-button" disabled>Refresh</button>

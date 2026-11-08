@@ -172,16 +172,21 @@ main:has(.landing) { max-width: none; padding: 0; }
 .session-person strong { display: block; font-size: .9rem; overflow-wrap: anywhere; }
 .session-person .avatar { border-radius: 50%; }
 .session-person #connection-badge { display: block; color: var(--muted); font-size: .7rem; }
-.feed-composer { display: grid; grid-template-columns: 2.4rem minmax(0, 1fr); gap: .5rem .8rem; padding: 1.15rem; border-bottom: 1px solid var(--border); }
+.feed-composer { display: grid; grid-template-columns: 2.4rem minmax(0, 1fr); gap: .3rem .6rem; padding: .85rem 1.15rem; border-bottom: 1px solid var(--border); }
 .feed-composer > :not(.composer-avatar) { grid-column: 2; }
 .composer-avatar { grid-row: 1; align-self: start; border-radius: 50%; }
 .feed-composer label { margin: 0; font-size: .9rem; font-weight: 500; color: var(--muted); }
-.feed-composer textarea { min-height: 4.5rem; max-height: 15rem; margin: 0; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: .65rem; font-size: 1rem; background: var(--surface); }
+.feed-composer textarea { min-height: 3.5rem; max-height: 15rem; margin: 0; padding: .5rem .65rem; border: 1px solid var(--border); border-radius: .65rem; font-size: 1rem; line-height: 1.45; background: var(--surface); }
 .feed-composer #content-help { font-size: .65rem; }
-.composer-footer { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; }
+.composer-footer { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: start; gap: .25rem .75rem; }
+.composer-notes { display: grid; grid-column: 1; grid-row: 1; gap: .15rem; }
+.composer-actions { display: flex; grid-column: 2; grid-row: 1; align-items: center; gap: .65rem; }
 .composer-footer #content-count { margin: 0; font-size: .68rem; }
 .composer-footer button { margin: 0; border-radius: 2rem; font-size: .78rem; padding: .55rem .85rem; }
-.feed-composer #draft-status { padding: 0; border: 0; background: transparent; font-size: .67rem; line-height: 1.5; }
+.feed-composer #draft-status { margin: 0; padding: 0; border: 0; background: transparent; font-size: .67rem; line-height: 1.5; }
+@media (max-width: 600px) {
+  .composer-notes { grid-column: 1 / -1; grid-row: 2; }
+}
 .feed-composer #publish-status { padding: 0; border: 0; background: transparent; font-size: .75rem; }
 #publish-status:empty { display: none; }
 #publish[aria-busy="true"] { display: inline-flex; align-items: center; gap: .45rem; }

@@ -34,7 +34,7 @@ function installWorker(existing = false) {
         reconcile: identity, stop: 'Stopped.', logout: 'Logged out.',
         backup: '{"header":{"version":1},"ciphertext":[1]}',
         verify_backup: identity.record_key,
-        profile: identity, update_profile: identity,
+        profile: window.pendingPost ? { ...identity, probe_post: window.pendingPost } : identity, update_profile: identity,
         publish: { index: 1, timestamp: 2, content: value },
         read_only: { starts: 1, reader: true, protected: false, identity: null },
         check_key: value,
@@ -100,21 +100,24 @@ try {
     'Staying logged in is not offered before submitting the active identity form.');
   };
   checkRememberChoice('create-form', 'start');
+  assert(element('remember-device').checked, 'Staying logged in is not selected by default.');
   frame.contentWindow.failUnlock = true;
   element('show-unlock').click();
   checkRememberChoice('unlock-form', 'unlock-start');
+  element('remember-device').checked = false;
   element('unlock-passphrase').value = 'disposable passphrase';
   element('unlock-form').requestSubmit();
   await wait(() => element('status').textContent.startsWith('Unlock failed'));
   assert(element('auth-error')?.textContent.includes('another tab'), 'Unlock failure is not beside the form.');
   assert(!element('unlock-start').disabled, 'Unlock cannot be retried after a tab conflict.');
+  assert(frame.contentWindow.rememberChoice === false, 'Authentication ignored the explicit remember-device opt-out.');
   frame.contentWindow.failUnlock = false;
   frame.contentWindow.authorStarts = 0;
   element('show-create').click();
   element('author-name').value = 'Disposable author';
   element('passphrase').value = element('confirm-passphrase').value = 'disposable passphrase';
   element('acknowledge').checked = true;
-  assert(element('remember-device') && !element('remember-device').checked, 'Remembering is not opt-in.');
+  assert(!element('remember-device').checked, 'Switching forms discarded the explicit remember-device opt-out.');
   element('remember-device').checked = true;
   element('create-form').requestSubmit();
   await wait(() => !element('session').hidden);
@@ -134,6 +137,12 @@ try {
       `Character counter is not beside Post at ${width}px.`);
     assert(Math.abs(counter.top + counter.height / 2 - button.top - button.height / 2) < 1,
       `Character counter and Post are not vertically aligned at ${width}px.`);
+    assert(button.top >= field.bottom && button.top - field.bottom <= 8,
+      `Post is too far below the writing box at ${width}px.`);
+    assert(rect('draft-status').top - field.bottom <= (width > 600 ? 36 : 80),
+      `Draft feedback is too far below the writing box at ${width}px.`);
+    assert(field.height <= 72 && rect('author-tools').height <= (width > 600 ? 170 : 235),
+      `The empty composer takes too much vertical space at ${width}px.`);
     const label = frame.contentDocument.createRange();
     label.selectNodeContents(element('mark-read'));
     const text = label.getBoundingClientRect(), action = rect('mark-read');
@@ -200,6 +209,8 @@ try {
     'Pending publication has no busy button state.');
   assert(element('publish-status')?.textContent.includes('confirmation') && element('publish-status').checkVisibility(),
     'Pending publication has no visible inline feedback.');
+  assert(frame.contentDocument.documentElement.scrollWidth <= frame.contentDocument.documentElement.clientWidth,
+    'Posting controls overflow the narrow composer.');
   frame.contentWindow.dispatchEvent(new frame.contentWindow.StorageEvent('storage',
     { key: 'murmur-follows-v1', storageArea: frame.contentWindow.localStorage }));
   assert(element('publish').textContent === 'Posting...', 'Preference updates erased publication progress.');
@@ -217,7 +228,21 @@ try {
   await wait(() => !element('read').disabled);
   assert(frame.contentWindow.publishCalls === 1, 'Reconnection resent the post automatically.');
   frame.contentWindow.deferPublish = false;
+  const pendingText = 'x'.repeat(280);
+  frame.contentWindow.pendingPost = { index: 1, timestamp: 2, content: pendingText };
+  element('content').value = pendingText;
+  element('content').dispatchEvent(new Event('input'));
+  element('publish').click();
+  await wait(() => element('content').readOnly && !element('content').disabled);
+  assert(element('content').value === pendingText && element('publish').textContent === 'Retry saved post',
+    'An uncertain publication lost its immutable retry text or action.');
+  assert(frame.contentDocument.documentElement.scrollWidth <= frame.contentDocument.documentElement.clientWidth,
+    'Saved-post retry controls overflow the narrow composer.');
+  frame.contentWindow.pendingPost = undefined;
   frame.contentWindow.publishSuccess = true;
+  element('publish').click();
+  await wait(() => element('content').value === '' && !element('content').disabled);
+  assert(!element('content').readOnly, 'Confirmed retry did not release the composer.');
   const nextPost = 'Another post without waiting for draft storage';
   element('content').value = nextPost;
   element('content').dispatchEvent(new Event('input'));
@@ -257,6 +282,7 @@ try {
   assert(element('verify-passphrase').value === '', 'Verification retained its password.');
   element('stop').click();
   await wait(() => !element('auth').hidden);
+  assert(element('remember-device').checked, 'Logout did not restore the next sign-in default.');
   element('show-restore').click();
   checkRememberChoice('restore-form', 'restore-start');
   element('remember-device').checked = true;
@@ -456,12 +482,12 @@ try {
   frame.contentWindow.resolveRemember();
   await wait(() => !element('unlock-start').disabled);
   checkRememberChoice('unlock-form', 'unlock-start');
-  assert(!element('remember-device').checked, 'Manual unlock enables remembering without consent.');
-  element('remember-device').checked = true;
+  assert(element('remember-device').checked, 'Returning manual sign-in does not default to staying logged in.');
+  element('remember-device').checked = false;
   element('unlock-passphrase').value = 'disposable passphrase';
   element('unlock-form').requestSubmit();
   await wait(() => !element('session').hidden);
-  assert(frame.contentWindow.rememberChoice === true, 'Unlock lost the stay-logged-in choice.');
+  assert(frame.contentWindow.rememberChoice === false, 'Unlock ignored the stay-logged-in opt-out.');
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.stack ?? failure.message}`;
