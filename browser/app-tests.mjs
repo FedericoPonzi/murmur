@@ -112,6 +112,23 @@ try {
   assert(element('view-home').contains(element('content')), 'Composer is not above the Home feed.');
   assert(element('view-settings').contains(element('session-diagnostics')), 'Settings omit node diagnostics.');
   assert(!element('app-header').hidden, 'Active sessions have no compact app navigation.');
+  for (const width of [1280, 760, 390, 320]) {
+    frame.width = width;
+    frame.height = 900;
+    const rect = id => element(id).getBoundingClientRect();
+    const field = rect('content'), avatar = rect('composer-avatar');
+    const counter = rect('content-count'), button = rect('publish');
+    assert(Math.abs(field.top - avatar.top) < 1, `Composer input and avatar are misaligned at ${width}px.`);
+    assert(Math.abs(field.right - button.right) < 1 && button.left - counter.right <= 20,
+      `Character counter is not beside Post at ${width}px.`);
+    assert(Math.abs(counter.top + counter.height / 2 - button.top - button.height / 2) < 1,
+      `Character counter and Post are not vertically aligned at ${width}px.`);
+    const label = frame.contentDocument.createRange();
+    label.selectNodeContents(element('mark-read'));
+    const text = label.getBoundingClientRect(), action = rect('mark-read');
+    assert(text.left - action.left >= 8 && action.right - text.right >= 8,
+      `Mark as read has no horizontal breathing room at ${width}px.`);
+  }
   assert(element('follow-list').textContent.includes('VLD0:existing'), 'Author session did not load saved follows.');
   frame.contentWindow.failDraft = true;
   element('content').value = 'An unsaved draft before connecting';
