@@ -2,8 +2,8 @@ pub mod credentials;
 pub mod vault;
 
 use murmur_model::{
-    next_index, post_subkey, recent_indexes, validate_content, validate_profile, Feed, Metadata,
-    ModelError, Post,
+    next_index, page_indexes, post_subkey, recent_indexes, validate_content, validate_profile,
+    Feed, FeedPage, Metadata, ModelError, PageCursor, Post,
 };
 use serde::Serialize;
 use std::future::Future;
@@ -124,8 +124,12 @@ pub async fn read_metadata(record: &impl RecordIo) -> Result<Metadata> {
 }
 
 pub async fn read_posts(record: &impl RecordIo, metadata: &Metadata) -> Result<Vec<Post>> {
+    read_indexes(record, recent_indexes(metadata.latest_post_index)).await
+}
+
+async fn read_indexes(record: &impl RecordIo, indexes: Vec<u64>) -> Result<Vec<Post>> {
     let mut posts = Vec::new();
-    for index in recent_indexes(metadata.latest_post_index) {
+    for index in indexes {
         let bytes = record
             .get(post_subkey(index))
             .await?
@@ -138,6 +142,24 @@ pub async fn read_posts(record: &impl RecordIo, metadata: &Metadata) -> Result<V
         posts.push(post);
     }
     Ok(posts)
+}
+
+pub async fn read_page(
+    record: &impl RecordIo,
+    record_key: String,
+    cursor: Option<PageCursor>,
+) -> Result<FeedPage> {
+    let metadata = read_metadata(record).await?;
+    let (indexes, next) = page_indexes(metadata.latest_post_index, cursor)?;
+    let posts = read_indexes(record, indexes).await?;
+    Ok(FeedPage {
+        feed: Feed {
+            record_key,
+            metadata,
+            posts,
+        },
+        next,
+    })
 }
 
 pub async fn update_profile(
@@ -274,6 +296,17 @@ pub async fn read_feed(
     own: Option<&RecordKey>,
     key: RecordKey,
 ) -> Result<Feed> {
+    read_feed_page(context, own, key, None)
+        .await
+        .map(|page| page.feed)
+}
+
+pub async fn read_feed_page(
+    context: &RoutingContext,
+    own: Option<&RecordKey>,
+    key: RecordKey,
+    cursor: Option<PageCursor>,
+) -> Result<FeedPage> {
     let remote = own
         .map(|own| remote_key(own, &key))
         .transpose()?
@@ -300,19 +333,7 @@ pub async fn read_feed(
         key: key.clone(),
         writer: None,
     };
-    let result = deadline(
-        async {
-            let metadata = read_metadata(&record).await?;
-            let posts = read_posts(&record, &metadata).await?;
-            Ok(Feed {
-                record_key: key.to_string(),
-                metadata,
-                posts,
-            })
-        },
-        60,
-    )
-    .await;
+    let result = deadline(read_page(&record, key.to_string(), cursor), 60).await;
     if remote {
         close_remote(context, key).await?;
     }
@@ -507,6 +528,60 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn reads_all_retained_pages_and_fails_without_exposing_reused_slots() {
+        let record = FakeRecord::new(&metadata(Some(105)));
+        for index in 6..=105 {
+            record
+                .set(post_subkey(index), encode(&post(index)).unwrap())
+                .await
+                .unwrap();
+        }
+        let mut cursor = None;
+        let mut indexes = vec![];
+        loop {
+            let page = read_page(&record, "feed-key".into(), cursor).await.unwrap();
+            assert_eq!(page.feed.record_key, "feed-key");
+            indexes.extend(page.feed.posts.iter().map(|post| post.index));
+            cursor = page.next;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        assert_eq!(indexes, (6..=105).rev().collect::<Vec<_>>());
+        let cursor = Some(murmur_model::PageCursor {
+            anchor: 105,
+            before: 86,
+        });
+        record.values.lock().unwrap().remove(&post_subkey(85));
+        assert!(read_page(&record, "feed-key".into(), cursor).await.is_err());
+        record
+            .set(post_subkey(85), encode(&post(185)).unwrap())
+            .await
+            .unwrap();
+        assert!(read_page(&record, "feed-key".into(), cursor).await.is_err());
+        record
+            .set(post_subkey(85), b"bad json".to_vec())
+            .await
+            .unwrap();
+        assert!(read_page(&record, "feed-key".into(), cursor).await.is_err());
+        record
+            .set(0, encode(&metadata(Some(205))).unwrap())
+            .await
+            .unwrap();
+        assert!(matches!(
+            read_page(&record, "feed-key".into(), cursor).await,
+            Err(Error::Model(ModelError::CursorExpired))
+        ));
+        assert!(
+            read_page(&FakeRecord::new(&metadata(None)), "empty".into(), None)
+                .await
+                .unwrap()
+                .next
+                .is_none()
+        );
     }
 
     #[tokio::test]
