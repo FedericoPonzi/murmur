@@ -66,6 +66,13 @@ preferences change. This does not synchronize different devices or publishers.
 reported SDK attachment, reliable/live routing peers, traffic and pending
 requests. Peer counts are not a list of active socket connections. The timestamp
 marks the last successful sample; diagnostics never imply a feed is reachable.
+Use **Home** for recent followed posts and your latest 20 locally confirmed
+posts. Self-following does not duplicate them. **My profile** shows your public
+key, profile editing and saved history; guests do not get an author profile.
+**Add feed / Following** manages reading, follows and mutes. Reading opens that
+feed with its own Follow and Share actions. **Settings & backups** separates
+encrypted identity backups from public reading-list files. Navigation does not
+restart the node or clear the composer.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.

@@ -52,7 +52,7 @@ function installWorker() {
   HTMLAnchorElement.prototype.click = function () { window.downloadName = this.download; };
 }
 const frame = document.createElement('iframe');
-frame.hidden = true;
+frame.title = 'Application behavior checks';
 try {
   const source = (await (await fetch('./index.html')).text())
     .replace(/<meta http-equiv="Content-Security-Policy"[^>]+>/, '');
@@ -78,6 +78,15 @@ try {
   element('content').value = draft;
   element('content').dispatchEvent(new Event('input'));
   await wait(() => element('draft-status')?.textContent === 'Draft saved on this browser.');
+  element('nav-profile').click();
+  assert(!element('view-profile').hidden && element('view-home').hidden, 'Profile navigation did not change views.');
+  element('nav-following').click();
+  assert(!element('view-following').hidden && frame.contentDocument.activeElement === element('key'), 'Add feed did not focus the key input.');
+  element('nav-settings').click();
+  assert(!element('view-settings').hidden, 'Settings navigation did not change views.');
+  element('nav-home').click();
+  assert(element('content').value === draft, 'Navigation erased the composer.');
+  assert(element('timeline').textContent.includes('Existing <b>literal</b> post'), 'Home omitted locally confirmed posts.');
   frame.contentWindow.networkReady = true;
   await wait(() => !element('publish').disabled);
   assert(element('debug-session').textContent === 'Author', 'Diagnostics misidentified the session.');
@@ -146,6 +155,7 @@ try {
   element('browse-start').click();
   await wait(() => !element('session').hidden);
   assert(element('identity-panel').hidden && element('author-tools').hidden, 'Guest was shown publishing tools.');
+  assert(element('nav-profile').hidden && element('backup-settings').hidden, 'Guest navigation exposed author-only views.');
   assert(element('debug-session').textContent === 'Read-only reader', 'Guest diagnostics claim author access.');
   await wait(() => !element('read').disabled);
   element('key').value = 'VLD0:remote';

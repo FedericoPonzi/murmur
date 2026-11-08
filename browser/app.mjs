@@ -8,6 +8,7 @@ let publicIdentity, draftTimer, draftVersion = 0, guest = false;
 let refreshTask;
 let pendingFeed, unreadCount = 0;
 let lastNodeState, lastChecked;
+let currentView = 'home', selectedKey;
 const feedProgress = new Map();
 const requests = new Map();
 const renderDiagnostics = () => {
@@ -65,8 +66,10 @@ const showIdentity = identity => {
   const posts = [...(identity.history ?? [])].reverse();
   $('authored-history').replaceChildren(...posts.map(post => postCard(post, identity.author_name)));
   if (!posts.length) $('authored-history').textContent = 'No locally saved posts yet.';
+  if (active) loadFollowView();
 };
 const showFeed = result => {
+  selectedKey = result.record_key ?? publicIdentity?.record_key;
   $('feed').textContent = JSON.stringify(result, null, 2);
   const posts = result.posts ?? [result];
   const author = result.metadata?.author_name ?? publicIdentity.author_name;
@@ -84,6 +87,7 @@ const showFeed = result => {
 const controls = () => {
   renderDiagnostics();
   $('follow').disabled = !active || busy;
+  $('follow-selected').disabled = $('share-selected').disabled = !active || busy || !selectedKey;
   $('export-reading').disabled = $('import-reading').disabled = !active || busy;
   $('share-feed').disabled = !active || busy;
   $('share-own').disabled = !active || guest || busy;
@@ -112,6 +116,7 @@ const controls = () => {
   $('content').disabled = busy || guest;
   $('stop').disabled = !active || busy;
   $('bootstrap').disabled = active || authenticating;
+  for (const id of ['home', 'profile', 'following', 'settings']) $(`nav-${id}`).disabled = !active;
 };
 const renderFollows = follows => {
   const muted = mutedFeeds(localStorage);
@@ -146,7 +151,10 @@ const renderFollows = follows => {
 };
 const renderTimeline = () => {
   const snapshots = new Map(cachedFeeds(localStorage).map(entry => [entry.key, entry]));
-  const entries = timeline(localStorage);
+  const ownFeed = publicIdentity ? { record_key: publicIdentity.record_key,
+    metadata: { author_name: publicIdentity.author_name, bio: publicIdentity.bio },
+    posts: publicIdentity.history ?? [] } : undefined;
+  const entries = timeline(localStorage, ownFeed);
   unreadCount = entries.filter(entry => entry.unread).length;
   $('unread-count').textContent = `${unreadCount} unread cached posts`;
   $('timeline').replaceChildren(...entries.map(entry => {
@@ -164,9 +172,14 @@ const renderTimeline = () => {
     read.disabled = !active || !attached || busy;
     read.onclick = () => { $('key').value = entry.key; $('read').click(); };
     article.append(read);
+    if (entry.local) {
+      const local = document.createElement('small');
+      local.textContent = 'Confirmed on this browser';
+      article.append(local);
+    }
     return article;
   }));
-  if (!entries.length) $('timeline').textContent = 'No cached posts yet. Follow a feed and refresh.';
+  if (!entries.length) $('timeline').textContent = 'Your Home is quiet. Add a feed and refresh, or publish your first thought.';
   $('feed-status').replaceChildren(...loadFollows(localStorage).map(key => {
     const item = document.createElement('li');
     const cached = snapshots.get(key), progress = feedProgress.get(key);
@@ -324,6 +337,24 @@ $('cancel-timeline').onclick = () => {
     $('status').textContent = 'Stopping refresh after the current bounded read finishes...';
   }
 };
+const showView = next => {
+  currentView = guest && next === 'profile' ? 'home' : next;
+  for (const name of ['home', 'profile', 'following', 'settings', 'feed']) $(`view-${name}`).hidden = name !== currentView;
+  for (const name of ['home', 'profile', 'following', 'settings']) {
+    if (name === currentView) $(`nav-${name}`).setAttribute('aria-current', 'page');
+    else $(`nav-${name}`).removeAttribute('aria-current');
+  }
+};
+for (const name of ['home', 'profile', 'following', 'settings']) {
+  $(`nav-${name}`).onclick = () => {
+    showView(name);
+    if (name === 'following') $('key').focus();
+    else $(`view-${currentView}`).querySelector('h1')?.focus({ preventScroll: true });
+  };
+}
+$('back-home').onclick = () => $('nav-home').click();
+$('follow-selected').onclick = () => { $('key').value = selectedKey; $('follow').click(); };
+$('share-selected').onclick = () => copyFeedLink(selectedKey);
 const showMode = next => {
   mode = next;
   clearPassphrases();
@@ -332,6 +363,8 @@ const showMode = next => {
   $('session').classList.toggle('reader-session', guest);
   for (const id of ['identity-panel', 'author-tools', 'history-tools']) $(id).hidden = guest;
   $('reader-tools').hidden = !guest;
+  $('author-session').hidden = $('nav-profile').hidden = $('backup-settings').hidden = guest;
+  showView(currentView);
   if (active) loadFollowView();
   $('create-panel').hidden = mode !== 'create';
   $('unlock-panel').hidden = mode !== 'unlock';
@@ -348,6 +381,8 @@ const finish = message => {
   refreshTask = undefined;
   feedProgress.clear();
   pendingFeed = undefined;
+  selectedKey = undefined;
+  currentView = 'home';
   unreadCount = 0;
   $('unread-count').textContent = '0 unread cached posts';
   worker?.terminate();
@@ -702,11 +737,13 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
     $('status').textContent = action === 'publish' ? 'Publishing; do not resend different text.' : 'Reading...';
     $('feed').textContent = '';
     $('feed-cards').replaceChildren();
+    selectedKey = undefined;
     if (action === 'publish') { clearTimeout(draftTimer); draftVersion++; }
     try {
       const result = await call(action, $(input).value);
       if (run !== generation) return;
       showFeed(result);
+      if (action === 'read') showView('feed');
       $('status').textContent = 'Confirmed.';
       if (action === 'publish') {
         $('content').value = '';
@@ -715,6 +752,7 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
         showIdentity({ ...publicIdentity, probe_post: null, draft: '',
           history: [...(publicIdentity.history ?? []).filter(post => post.index !== result.index), result]
             .sort((a, b) => a.index - b.index).slice(-1000) });
+        showView('home');
       }
     } catch (failure) {
       if (run !== generation) return;

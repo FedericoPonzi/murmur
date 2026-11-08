@@ -152,6 +152,7 @@ main:has(.landing) { max-width: none; padding: 0; }
 .check-line input { flex: 0 0 auto; width: 1rem; height: 1rem; margin-top: .2rem; accent-color: var(--violet); }
 .quiet-button { background: #edf0fc; color: var(--blue); font-size: .85rem; }
 .session-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 1.5rem; align-items: start; }
+#app-navigation { display: grid; gap: .5rem; }
 .profile-panel h1 { font-size: 1.6rem; }
 .profile-panel output { display: block; padding: .8rem; margin-top: .6rem; background: var(--background); border-radius: .6rem; }
 .profile-panel details { border-top: 1px solid var(--border); padding-top: 1rem; font-size: .85rem; }

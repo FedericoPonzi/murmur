@@ -104,6 +104,12 @@ try {
   muteFeed(storage, 'VLD0:second', true);
   removeFollow(storage, 'VLD0:second');
   assert(mutedFeeds(storage).length === 0, 'Unfollow left an orphaned mute.');
+  addFollow(storage, 'VLD0:second');
+  const ownFeed = feed('VLD0:second', [20, 30]);
+  saveFeed(storage, 'VLD0:second', ownFeed, 107);
+  const home = timeline(storage, ownFeed);
+  assert(home.length === 2 && home.every(entry => entry.local && !entry.unread),
+    'Own confirmed posts were omitted, duplicated or counted unread in Home.');
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.message}`;

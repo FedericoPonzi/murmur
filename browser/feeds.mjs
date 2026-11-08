@@ -91,11 +91,16 @@ export function cachedFeeds(storage) {
   return state.follows.flatMap(key => Object.hasOwn(state.cache ?? {}, key)
     ? [{ key, ...state.cache[key] }] : []);
 }
-export function timeline(storage) {
+export function timeline(storage, ownFeed) {
   const state = load(storage);
-  return cachedFeeds(storage).filter(entry => !state.muted?.includes(entry.key)).flatMap(({ key, feed, read_at }) =>
+  const entries = cachedFeeds(storage).filter(entry => !state.muted?.includes(entry.key)).flatMap(({ key, feed, read_at }) =>
     feed.posts.map(post => ({ key, metadata: feed.metadata, post, read_at,
-      unread: !Object.hasOwn(state.seen ?? {}, key) || post.index > state.seen[key] })))
+      unread: !Object.hasOwn(state.seen ?? {}, key) || post.index > state.seen[key] })));
+  if (ownFeed && !state.muted?.includes(ownFeed.record_key)) {
+    entries.push(...[...ownFeed.posts].sort((a, b) => a.index - b.index).slice(-20)
+      .map(post => ({ key: ownFeed.record_key, metadata: ownFeed.metadata, post, read_at: null, unread: false, local: true })));
+  }
+  return [...new Map(entries.map(entry => [JSON.stringify([entry.key, entry.post.index]), entry])).values()]
     .sort((a, b) => b.post.timestamp - a.post.timestamp
       || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0) || b.post.index - a.post.index);
 }

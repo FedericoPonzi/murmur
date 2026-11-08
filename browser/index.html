@@ -84,9 +84,52 @@
 </div>
 </section>
 <section id="session" class="session-layout" hidden>
-<aside id="identity-panel" class="app-panel profile-panel">
+<aside id="session-sidebar" class="app-panel">
+<nav id="app-navigation" aria-label="Application">
+<button id="nav-home" class="quiet-button" aria-controls="view-home" aria-current="page">Home</button>
+<button id="nav-profile" class="quiet-button" aria-controls="view-profile">My profile</button>
+<button id="nav-following" class="quiet-button" aria-controls="view-following">Add feed / Following</button>
+<button id="nav-settings" class="quiet-button" aria-controls="view-settings">Settings &amp; backups</button>
+</nav>
+<div id="author-session">
+<button id="stop" class="quiet-button" disabled>Lock identity</button>
+<button id="reconnect" class="quiet-button" disabled>Retry connection</button>
+<p class="preview-notice">Locking or closing this tab stops its node. Reloading starts locked.</p>
+</div>
+<div id="reader-tools" hidden>
+<p class="eyebrow">Read-only session</p>
+<p>Your author identity stays locked. This node reads public feeds only.</p>
+<button id="stop-reader" class="quiet-button" disabled>Stop reading</button>
+<button id="retry-reader" class="quiet-button" disabled>Retry connection</button>
+</div>
+</aside>
+<div id="session-content" class="app-panel">
+<div id="author-tools">
+<p class="eyebrow">Your voice</p>
+<h2>Share a thought</h2>
+<p class="preview-notice">Posts and profile information are public. Your feed shows the newest 20 posts from 100 retained network slots.</p>
+<label for="content">What's on your mind?</label>
+<textarea id="content" maxlength="8000" aria-describedby="content-help content-count draft-status"></textarea>
+<small id="content-help">Up to 280 characters. An interrupted attempt keeps the same text for retry.</small>
+<output id="content-count" aria-live="polite">0 / 280</output>
+<small id="draft-status" role="status"></small>
+<button id="publish" disabled>Publish post</button>
+</div>
+<p id="follow-status" role="status"></p>
+<section id="view-home" aria-labelledby="timeline-heading">
+<h1 id="timeline-heading" tabindex="-1">Home</h1>
+<output id="unread-count" aria-live="polite">0 unread cached posts</output>
+<button id="mark-read" class="quiet-button" disabled>Mark cached posts as read</button>
+<p class="preview-notice">Your latest locally confirmed posts and recent unmuted followed feeds, sorted by reported time. Authors' clocks can differ. Cached snapshots may be stale.</p>
+<button id="refresh-timeline" disabled>Refresh followed feeds</button>
+<button id="cancel-timeline" class="quiet-button" disabled>Stop refresh</button>
+<ul id="feed-status"></ul>
+<div id="timeline"></div>
+</section>
+<section id="view-profile" aria-label="My profile" hidden>
+<div id="identity-panel" class="profile-panel">
 <p class="eyebrow">Your identity</p>
-<h1 id="profile-name"></h1>
+<h1 id="profile-name" tabindex="-1"></h1>
 <p id="profile-bio"></p>
 <label for="own-key">Your public RecordKey</label>
 <output id="own-key"></output>
@@ -105,9 +148,15 @@
 </form>
 </details>
 <p class="preview-notice">Share this key so others can read your feed.</p>
-<button id="stop" class="quiet-button" disabled>Lock identity</button>
-<button id="reconnect" class="quiet-button" disabled>Retry connection</button>
-<p class="preview-notice">Locking or closing this tab stops its node. Reloading starts locked.</p>
+</div>
+<div id="history-tools">
+<h2>Your saved posts</h2>
+<p class="preview-notice">Up to 1000 locally confirmed posts. This is not a permanent network archive.</p>
+<section id="authored-history" aria-label="Local authored history"></section>
+</div>
+</section>
+<section id="view-settings" aria-labelledby="settings-heading" hidden>
+<h1 id="settings-heading" tabindex="-1">Settings &amp; backups</h1>
 <details id="backup-settings">
 <summary>Back up your identity</summary>
 <p class="preview-notice">Download and check a backup before using valuable data. Keep its passphrase separately. Backups are not permanent network archives.</p>
@@ -130,37 +179,6 @@
 </fieldset>
 </form>
 </details>
-</aside>
-<div class="app-panel">
-<div id="reader-tools" hidden>
-<p class="eyebrow">Just here to read</p>
-<h1>Find a voice worth following.</h1>
-<p>Your author identity stays locked. This node reads public feeds only.</p>
-<button id="stop-reader" class="quiet-button" disabled>Stop reading</button>
-<button id="retry-reader" class="quiet-button" disabled>Retry connection</button>
-</div>
-<div id="author-tools">
-<p class="eyebrow">Your voice</p>
-<h2>Share a thought</h2>
-<p class="preview-notice">Posts and profile information are public. Your feed shows the newest 20 posts from 100 retained network slots.</p>
-<label for="content">What's on your mind?</label>
-<textarea id="content" maxlength="8000" aria-describedby="content-help content-count draft-status"></textarea>
-<small id="content-help">Up to 280 characters. An interrupted attempt keeps the same text for retry.</small>
-<output id="content-count" aria-live="polite">0 / 280</output>
-<small id="draft-status" role="status"></small>
-<button id="publish" disabled>Publish post</button>
-</div>
-<label for="key">Read a feed by RecordKey</label>
-<input id="key" spellcheck="false">
-<button id="read" disabled>Read feed</button>
-<button id="follow" class="quiet-button" disabled>Follow this feed</button>
-<button id="share-feed" class="quiet-button" disabled>Copy feed link</button>
-<section aria-labelledby="following-heading">
-<h2 id="following-heading">Following</h2>
-<p class="preview-notice">Up to 50 feeds, saved on this browser. Mute hides a feed from Home without unfollowing or preventing direct reads. This list is not passphrase-protected or included in identity backups.</p>
-<p id="follow-status" role="status"></p>
-<ul id="follow-list"></ul>
-<button id="reset-follows" class="quiet-button" hidden>Reset saved follows</button>
 <details>
 <summary>Back up your reading list</summary>
 <p class="preview-notice">This unencrypted JSON file contains followed keys, mute preferences and read markers, not your identity, drafts or cached posts. Import merges without removing existing follows or mutes.</p>
@@ -172,23 +190,26 @@
 </form>
 </details>
 </section>
-<section aria-labelledby="timeline-heading">
-<h2 id="timeline-heading">Your timeline</h2>
-<output id="unread-count" aria-live="polite">0 unread cached posts</output>
-<button id="mark-read" class="quiet-button" disabled>Mark cached posts as read</button>
-<p class="preview-notice">Recent posts from followed feeds, sorted by reported time. Authors' clocks can differ. Cached snapshots are not guaranteed current or permanently retained.</p>
-<button id="refresh-timeline" disabled>Refresh followed feeds</button>
-<button id="cancel-timeline" class="quiet-button" disabled>Stop refresh</button>
-<ul id="feed-status"></ul>
-<div id="timeline"></div>
+<section id="view-following" aria-labelledby="following-heading" hidden>
+<h1 id="following-heading" tabindex="-1">Add a feed</h1>
+<p class="preview-notice">Paste a complete RecordKey to read or follow. Up to 50 feeds are saved on this browser, unencrypted and separate from identity backups.</p>
+<label for="key">Read a feed by RecordKey</label>
+<input id="key" spellcheck="false">
+<button id="read" disabled>Read feed</button>
+<button id="follow" class="quiet-button" disabled>Follow this feed</button>
+<button id="share-feed" class="quiet-button" disabled>Copy feed link</button>
+<h2>Following</h2>
+<p class="preview-notice">Mute hides a feed from Home without unfollowing or preventing direct reads.</p>
+<ul id="follow-list"></ul>
+<button id="reset-follows" class="quiet-button" hidden>Reset saved follows</button>
 </section>
+<section id="view-feed" aria-label="Selected feed" hidden>
+<button id="back-home" class="quiet-button">Back to Home</button>
+<button id="follow-selected" class="quiet-button" disabled>Follow this feed</button>
+<button id="share-selected" class="quiet-button" disabled>Copy feed link</button>
 <section id="feed-cards" aria-label="Read feed"></section>
+</section>
 <details><summary>Response details</summary><pre id="feed" aria-label="Feed response"></pre></details>
-<div id="history-tools">
-<h2>Your saved posts</h2>
-<p class="preview-notice">Up to 1000 locally confirmed posts. This is not a permanent network archive.</p>
-<section id="authored-history" aria-label="Local authored history"></section>
-</div>
 </div>
 </section>
 <p id="status" role="status">Checking local identity...</p>

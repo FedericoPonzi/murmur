@@ -48,13 +48,20 @@ def check(storage_only=False):
         driver.set_window_size(1280, 900)
         wait = WebDriverWait(driver, 180)
         element = lambda id: driver.find_element(By.ID, id)
-        text = lambda id: element(id).get_attribute("textContent") if id == "feed" else element(id).text
+        text = lambda id: element(id).get_attribute("textContent") if id in ("feed", "own-key", "profile-name", "profile-bio") else element(id).text
+
+        def reveal_view(id):
+            view = driver.execute_script("return arguments[0].closest('section[id^=\"view-\"]')?.id", element(id))
+            if view in ("view-home", "view-profile", "view-following", "view-settings") and not element(view).is_displayed():
+                click(view.replace("view-", "nav-"))
 
         def click(id):
+            reveal_view(id)
             driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'})", element(id))
             element(id).click()
 
         def open_details(id):
+            reveal_view(id)
             summary = element(id).find_element(By.TAG_NAME, "summary")
             driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'})", summary)
             summary.click()
@@ -162,6 +169,7 @@ def check(storage_only=False):
             wait.until(lambda _: text("status") == "Public profile updated.")
             assert text("own-key") == key
             assert text("profile-name") == author
+            click("nav-following")
             element("key").clear()
             element("key").send_keys("invalid-key")
             click("read")
@@ -202,6 +210,7 @@ def check(storage_only=False):
                 raise ValueError("Set MURMUR_BRIDGE_URL to verify native/browser cross-reads.")
             with urlopen(bridge + "/api/me", timeout=65) as response:
                 me = json.load(response)
+            click("nav-following")
             element("key").clear()
             element("key").send_keys(me["record_key"])
             click("read")
@@ -273,6 +282,7 @@ def check(storage_only=False):
             assert not element("identity-panel").is_displayed()
             assert not element("author-tools").is_displayed()
             wait.until(lambda _: element("read").is_enabled())
+            click("nav-following")
             element("key").send_keys(key)
             click("read")
             wait.until(lambda _: '"posts"' in text("feed"))
@@ -285,7 +295,7 @@ def check(storage_only=False):
             assert len(element("timeline").find_elements(By.TAG_NAME, "article")) == 3
             assert text("unread-count").startswith("3 unread")
             click("mark-read")
-            assert text("unread-count").startswith("0 unread")
+            wait.until(lambda _: text("unread-count").startswith("0 unread"))
             for width in (390, 320, 1280):
                 driver.set_window_size(width, 900)
                 assert driver.execute_script("return document.documentElement.scrollWidth <= innerWidth")
@@ -298,6 +308,7 @@ def check(storage_only=False):
             assert not element("author-tools").is_displayed()
             assert not element("publish").is_enabled()
             assert [post["index"] for post in json.loads(text("feed"))["posts"]] == [2, 1, 0]
+            click("nav-home")
             assert text("unread-count").startswith("0 unread")
             log("PASS: shared links open a guest, preserve cached reads and unread markers, and do not unlock an author.")
             click("stop-reader")
@@ -310,7 +321,9 @@ def check(storage_only=False):
             wait.until(lambda _: element("browse-start").is_enabled())
             click("browse-start")
             storage(3)
+            click("nav-following")
             assert key in text("follow-list")
+            click("nav-home")
             assert content in text("timeline")
             click("stop-reader")
             wait.until(lambda _: text("status") == "Reader stopped.")
