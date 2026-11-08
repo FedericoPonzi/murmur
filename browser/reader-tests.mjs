@@ -17,6 +17,18 @@ try {
   assert(await storage_snapshot('murmur-browser-identity') === saved, 'Key validation opened author storage.');
   const state = await node.call('read_only');
   assert(state.reader === true && !state.protected && state.identity === null, 'Guest loaded an author.');
+  try {
+    await node.call('read_page', { key: 'invalid-key' });
+    throw new Error('Invalid page key accepted.');
+  } catch (failure) {
+    assert(String(failure).includes('Invalid Veilid RecordKey'), 'Guest pagination did not reach SDK key validation.');
+  }
+  try {
+    await node.call('read_page', { key: author.identity.record_key, cursor: { anchor: 105, before: 0 } });
+    throw new Error('Invalid page cursor accepted.');
+  } catch (failure) {
+    assert(String(failure).includes('invalid feed page cursor'), 'SDK did not reject an invalid cursor before network access.');
+  }
   const status = await node.call('status');
   const statusKeys = ['starts', 'ready', 'protected', 'reader', 'attachment', 'live_peers', 'reliable_peers', 'download_bps', 'upload_bps'];
   assert(Object.keys(status).sort().join() === statusKeys.sort().join(), 'Status is missing safe diagnostics or includes unexpected data.');

@@ -105,20 +105,20 @@ if (typeof self !== 'undefined') {
           send(data.id, 'Stopped.');
         } else {
           if (!node) throw new Error('Start the node first.');
-          if (readOnly && !['status', 'profile', 'read', 'reconnect', 'check_key'].includes(data.action)) {
+          if (readOnly && !['status', 'profile', 'read', 'read_page', 'reconnect', 'check_key'].includes(data.action)) {
             throw new Error('Guest readers cannot use author operations.');
           }
           if (['backup', 'verify_backup'].includes(data.action) && typeof passphrase !== 'string') throw new Error('Passphrase must be a string.');
           if (data.action === 'verify_backup' && typeof data.value?.backup !== 'string') throw new Error('Provide an encrypted backup.');
-          const methods = { status: 'status', profile: 'local_identity', identity: 'identity_key', reconcile: 'reconcile_pending', publish: 'publish_post', read: 'read_feed', backup: 'export_backup', verify_backup: 'verify_backup', draft: 'save_draft', update_profile: 'update_profile', reconnect: 'reconnect', check_key: 'check_key',
+          const methods = { status: 'status', profile: 'local_identity', identity: 'identity_key', reconcile: 'reconcile_pending', publish: 'publish_post', read: 'read_feed', read_page: 'read_page', backup: 'export_backup', verify_backup: 'verify_backup', draft: 'save_draft', update_profile: 'update_profile', reconnect: 'reconnect', check_key: 'check_key',
             test_seed: 'test_seed_identity', test_storage: 'test_storage' };
           const method = methods[data.action];
           if (!Object.hasOwn(methods, data.action) || typeof node[method] !== 'function') throw new Error('Unknown probe command.');
           const result = data.action === 'verify_backup'
             ? node.verify_backup(data.value.backup, passphrase)
             : await node[method](data.action === 'backup' ? passphrase
-              : data.action === 'update_profile' ? JSON.stringify(data.value) : data.value);
-          send(data.id, ['status', 'profile', 'reconcile', 'publish', 'read', 'update_profile'].includes(data.action)
+              : ['update_profile', 'read_page'].includes(data.action) ? JSON.stringify(data.value) : data.value);
+          send(data.id, ['status', 'profile', 'reconcile', 'publish', 'read', 'read_page', 'update_profile'].includes(data.action)
             ? JSON.parse(result) : result);
         }
       } catch (failure) { send(data.id, undefined, String(failure)); }

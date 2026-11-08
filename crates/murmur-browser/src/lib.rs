@@ -638,6 +638,31 @@ impl BrowserNode {
         String::from_utf8(encode(&feed)?).map_err(|_| error("JSON encoding failed"))
     }
 
+    pub async fn read_page(&self, request: String) -> Result<String> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Request {
+            key: String,
+            cursor: Option<murmur_model::PageCursor>,
+        }
+        let request: Request =
+            serde_json::from_str(&request).map_err(|_| error("Invalid feed page request"))?;
+        let key = feed_key(&request.key)?;
+        if let Some(cursor) = request.cursor {
+            murmur_model::page_indexes(Some(cursor.anchor), Some(cursor))
+                .map_err(|failure| core_error(failure.into()))?;
+        }
+        let page = murmur_core::read_feed_page(
+            &self.context,
+            self.identity.as_ref().map(|identity| &identity.key),
+            key,
+            request.cursor,
+        )
+        .await
+        .map_err(core_error)?;
+        String::from_utf8(encode(&page)?).map_err(|_| error("JSON encoding failed"))
+    }
+
     pub async fn shutdown(self) {
         self.api.shutdown().await;
     }
