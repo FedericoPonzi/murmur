@@ -1,8 +1,9 @@
 # Browser preview
 
 This is an experimental local browser alpha, not a public production release.
-Use disposable identities and harmless public text. The native CLI and read-only
-bridge are unchanged.
+Use disposable identities and harmless public text. The native CLI is unchanged.
+The read-only bridge additionally offers pagination; its existing endpoints and
+publishing behavior remain compatible.
 
 ## Build and open
 
@@ -73,6 +74,15 @@ key, profile editing and saved history; guests do not get an author profile.
 feed with its own Follow and Share actions. **Settings & backups** separates
 encrypted identity backups from public reading-list files. Navigation does not
 restart the node or clear the composer.
+In an opened feed, **Load older posts** fetches another 20 posts, up to that
+feed's retained 100-post window. **Read my retained feed** in your profile opens
+the same network reader for your own posts. **Refresh from newest** starts a
+fresh window; if an older page fails, already loaded posts remain visible.
+If new publications overwrite a requested page, refresh rather than expecting
+an archive. Only one selected feed's pages are kept in memory (at most 100);
+switching feeds, locking, stopping or reloading discards them. These snapshots
+can become stale. Home and its persistent followed-feed cache still use the
+newest 20, and locally saved author history is separate from network retention.
 The desktop app keeps the composer, navigation, connection status and expandable
 node diagnostics in a left sidebar, with the selected feed on the right.
 On narrow screens the sidebar stacks above the feed; **Back to navigation**
@@ -120,8 +130,8 @@ keyboard entry, narrow desktop viewports, publishing, backup recovery, guest
 links, follows, cached timeline, and persisted read markers. Narrow viewports
 are not physical phone tests. Android, iOS, Safari, and public HTTPS/WSS hosting
 remain unverified release gates; do not treat them as supported deployments.
-The network retains a 100-slot recent-post ring and reads its newest 20 posts,
-not a permanent remotely browsable archive.
+Each author's feed retains a 100-slot recent-post ring; pagination browses
+that window, not a permanent archive. There is no 100-post network-wide cap.
 
 ## Phone testing without public hosting
 

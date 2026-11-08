@@ -35,6 +35,8 @@ The CLI contacts a private local Unix socket; there is no HTTP publishing API.
 Reload the browser or select **Read this server's feed** to see new posts.
 After 100 posts, each new post replaces the oldest slot. The browser returns at
 most the newest 20; it is not an archive.
+The WASM [browser app](browser-probe.md) can load older pages within each
+feed's retained 100 posts. This limit is per feed, not across the network.
 
 ## Share and follow
 

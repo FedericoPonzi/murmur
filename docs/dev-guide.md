@@ -84,7 +84,8 @@ serves worker modules and WASM with their required MIME types, and disables
 asset caching during development. `PORT` overrides 8000.
 
 An optional `MURMUR_BRIDGE_URL=http://127.0.0.1:8080` enables a same-origin
-development proxy for `GET /api/me` and `GET /api/feed/{key}` only.
+development proxy for `GET /api/me`, `GET /api/feed/{key}`, and the paginated
+`GET /api/feed/{key}/page` endpoint only.
 It forwards no cookies, credentials, mutation requests, or redirects; reads are
 bounded. `/api/me` identifies the bridge operator, not the browser visitor.
 The probe still reads directly through its own Veilid node; the proxy is not
@@ -144,7 +145,15 @@ remain; the OS releases its lock when the process exits.
 
 An empty feed has `latest_post_index: null`. Logical indexes start at zero;
 physical subkey is `1 + (index % 100)`. Timestamps are Unix seconds.
-Readers return indexes from latest down to `max(0, latest - 19)`, newest first.
+The existing feed API returns indexes from latest down to
+`max(0, latest - 19)`, newest first. The page API also reads at most 20 posts
+per request, with an optional `{anchor, before}` cursor. `anchor` is the latest
+index on the initial page; `before` is the exclusive upper bound for the next
+page. Pages stop at `max(0, anchor - 99)`. An empty feed has no next cursor.
+Readers check fresh metadata on every page and reject expired windows instead
+of substituting overwritten slots. New publications do not invalidate a page
+if all its requested posts remain retained. This is a per-feed rolling window,
+not a 100-post limit across the network and not an archival protocol.
 Index arithmetic is checked. The accepted schema is exactly 101 owner-only
 SMPL subkeys; unrelated Veilid records are not assumed to be feeds.
 
@@ -189,10 +198,22 @@ automatically resend messages.
 | `GET /` | Embedded HTML |
 | `GET /api/me` | `{record_key, author_name, bio}` |
 | `GET /api/feed/{dht_key}` | `{record_key, metadata, posts}` |
+| `GET /api/feed/{dht_key}/page` | `{record_key, metadata, posts, next}` |
+
+For the first page, omit query parameters. If `next` is
+`{"anchor":105,"before":86}`, request
+`/api/feed/{dht_key}/page?anchor=105&before=86` for indexes 85 through 66.
+`next: null` marks the end. Send both parameters or neither; malformed,
+duplicate and unknown parameters fail with JSON errors. Cursors contain no
+writer credentials. The original endpoint and DHT payloads are unchanged.
+Expired cursors return 410; restart from the first page. Missing/corrupt values
+or a slot overwritten during a read fail rather than returning a partial page.
+The page endpoint uses the same admission, cleanup and deadline limits.
 
 There are no HTTP mutation endpoints; `POST /api/post` returns 404.
 Errors are JSON `{"error":"..."}`: 400 invalid input, 404 established missing
-record, 502 incompatible/corrupt/upstream failure, 503 offline/busy, 504 timeout,
+record, 410 expired retained-page cursor, 502 incompatible/corrupt/upstream failure,
+503 offline/busy, 504 timeout,
 and 500 local failure. A failed network lookup is not proof of a nonexistent
 record. Requests are same-origin; there is no CORS publishing surface.
 

@@ -147,6 +147,22 @@ def check(storage_only=False):
             assert initial["posts"] == []
             assert initial["metadata"]["author_name"] == author
             assert initial["metadata"]["bio"] == "A public disposable profile."
+            bridge_url = os.environ.get("MURMUR_BRIDGE_URL")
+            if bridge_url:
+                with urlopen(bridge_url + "/api/me", timeout=150) as response:
+                    bridge_key = json.load(response)["record_key"]
+                path = bridge_url + "/api/feed/" + quote(bridge_key, safe="")
+                with urlopen(path, timeout=150) as response:
+                    recent = json.load(response)
+                with urlopen(path + "/page", timeout=150) as response:
+                    page = json.load(response)
+                assert {name: page[name] for name in ("record_key", "metadata", "posts")} == recent
+                assert "next" in page
+                try:
+                    urlopen(path + "/page?anchor=105&before=0", timeout=150)
+                    raise AssertionError("Invalid bridge page cursor was accepted.")
+                except HTTPError as failure:
+                    assert failure.code == 400 and json.load(failure)["error"]
             first = driver.current_window_handle
             driver.switch_to.new_window("tab")
             visit()
@@ -170,6 +186,13 @@ def check(storage_only=False):
             wait.until(lambda _: content in text("feed"))
             assert json.loads(text("feed"))["index"] == 1
             assert element("content").get_attribute("value") == ""
+            click("read-own")
+            wait.until(lambda _: len(element("feed-cards").find_elements(By.TAG_NAME, "article")) == 2)
+            assert json.loads(text("feed"))["next"] is None
+            assert not element("load-older").is_displayed()
+            click("refresh-selected")
+            wait.until(lambda _: not element("read").get_attribute("disabled"))
+            assert len(element("feed-cards").find_elements(By.TAG_NAME, "article")) == 2
             open_details("profile-settings")
             author = "Updated <b>author</b>"
             element("edit-name").clear()
@@ -179,11 +202,13 @@ def check(storage_only=False):
             assert text("own-key") == key
             assert text("profile-name") == author
             click("nav-following")
+            previous_feed = text("feed")
+            assert previous_feed
             element("key").clear()
             element("key").send_keys("invalid-key")
             click("read")
             wait.until(lambda _: "Invalid Veilid RecordKey" in text("status"))
-            assert text("feed") == ""
+            assert text("feed") == previous_feed
         draft = "An unpublished encrypted draft"
         element("content").send_keys(draft)
         wait.until(lambda _: text("draft-status") == "Draft saved on this browser.")

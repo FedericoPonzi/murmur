@@ -816,7 +816,8 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
       }
     } catch (failure) {
       if (run !== generation) return;
-      $('status').textContent = failure.message;
+      $('status').textContent = failure.message
+        + (action === 'read_page' && selectedPage ? ' Previous feed snapshot kept; retry or choose another key.' : '');
       if (action === 'publish') {
         try {
           const identity = await call('profile');

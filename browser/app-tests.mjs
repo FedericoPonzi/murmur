@@ -58,9 +58,12 @@ function installWorker() {
         : action === 'draft' && window.failDraft ? 'Storage unavailable'
         : action === 'publish' ? 'Network temporarily unavailable'
         : (action === 'read' && value === 'VLD0:existing') || (action === 'read_page' && value.key === 'VLD0:existing') ? 'This feed is unavailable'
-        : action === 'read_page' && value.cursor && window.failOlder ? 'Older page unavailable; retry' : undefined;
+        : action === 'read_page' && value.cursor && window.failOlder
+          ? window.failOlder === 'expired' ? 'Retained feed window changed; refresh the feed.' : 'Older page unavailable; retry' : undefined;
       if (action === 'read' && value !== 'VLD0:existing') results.read.metadata.latest_post_index = 0;
-      queueMicrotask(() => { if (!this.terminated) this.onmessage({ data: { id, result: results[action], error } }); });
+      const respond = () => { if (!this.terminated) this.onmessage({ data: { id, result: results[action], error } }); };
+      if (action === 'read_page' && value.cursor && window.deferOlder) window.resolveOlder = respond;
+      else queueMicrotask(respond);
     }
     terminate() { this.terminated = true; }
   };
@@ -200,8 +203,28 @@ try {
     await wait(() => !element('read').disabled);
   }
   assert(element('load-older').hidden && !element('feed-cards').querySelector('b'), 'Pagination exceeded the window or interpreted HTML.');
+  const keptPage = element('feed').textContent;
+  element('key').value = 'VLD0:existing';
+  element('read').click();
+  await wait(() => !element('read').disabled);
+  assert(element('feed').textContent === keptPage && element('status').textContent.includes('Previous feed snapshot kept'),
+    'Failed feed switch erased the current snapshot or hid its provenance.');
   element('refresh-selected').click();
   await wait(() => element('feed-cards').querySelectorAll('article').length === 20);
+  frame.contentWindow.failOlder = 'expired';
+  element('load-older').click();
+  await wait(() => element('paging-status').textContent.includes('window changed'));
+  assert(element('feed-cards').querySelectorAll('article').length === 20, 'Expired cursor erased the snapshot.');
+  frame.contentWindow.failOlder = false;
+  frame.contentWindow.deferOlder = true;
+  element('load-older').click();
+  await wait(() => frame.contentWindow.resolveOlder);
+  element('nav-home').click();
+  frame.contentWindow.resolveOlder();
+  await wait(() => !element('read').disabled);
+  assert(!element('view-home').hidden && element('feed-cards').querySelectorAll('article').length === 40,
+    'Late page response changed navigation or lost the selected-feed cache.');
+  frame.contentWindow.deferOlder = false;
   element('key').value = 'VLD0:remote';
   element('read').click();
   await wait(() => element('feed-cards').textContent.includes('guest-readable'));
