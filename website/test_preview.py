@@ -9,11 +9,13 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urljoin, urlsplit
 
 from serve import create_preview_server
+from build import publish
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 WASM = b"\0asm\1\0\0\0"
@@ -125,6 +127,45 @@ class BuildTests(unittest.TestCase):
                      "pkg/murmur_browser.js", "pkg/murmur_browser_bg.wasm", "style.css"):
             self.assertEqual((release / name).read_bytes(), (self.root / "browser" / name).read_bytes())
         self.assertIn(f'href="./{Path(script[1]).parent.as_posix()}/style.css"', page)
+
+    def test_update_and_rollback_keep_previous_release_assets(self):
+        self.build("--with-app")
+        previous = self.read("app/index.html")
+        old_script = re.search(r'src="(\./releases/[^"]+/app.mjs)"', previous)[1]
+        old_worker = self.output / "app" / Path(old_script).parent / "worker.mjs"
+        original = old_worker.read_bytes()
+        source = self.root / "browser/worker.mjs"
+        source.write_bytes(original + b"\n// Disposable update fixture.\n")
+        self.build("--with-app")
+        updated = self.read("app/index.html")
+        self.assertNotEqual(updated, previous)
+        self.assertEqual(old_worker.read_bytes(), original)
+        new_script = re.search(r'src="(\./releases/[^"]+/app.mjs)"', updated)[1]
+        source.write_bytes(original)
+        self.build("--with-app")
+        self.assertEqual(self.read("app/index.html"), previous)
+        self.assertTrue((self.output / "app" / new_script).is_file())
+
+    def test_interrupted_publication_keeps_previous_entrypoint(self):
+        source = self.root / "staged"
+        (source / "app").mkdir(parents=True)
+        (source / "app/index.html").write_text("new entrypoint")
+        (source / "app/worker.mjs").write_text("new worker")
+        previous = self.read("app/index.html")
+        import os
+        replace = os.replace
+
+        def interrupted(staging, target):
+            if target == self.output / "app/index.html":
+                self.assertEqual(self.read("app/worker.mjs"), "new worker")
+                raise OSError("Disposable interrupted deployment")
+            return replace(staging, target)
+
+        with patch("build.os.replace", side_effect=interrupted):
+            with self.assertRaisesRegex(OSError, "interrupted"):
+                publish(source, self.output)
+        self.assertEqual(self.read("app/index.html"), previous)
+        self.assertFalse(list(self.output.rglob(".murmur-*")))
 
     def test_platforms_are_planned_without_fake_downloads(self):
         rows = re.findall(r"<tr>(.*?)</tr>", self.read("platforms.html"), re.S)

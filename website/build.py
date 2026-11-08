@@ -33,6 +33,32 @@ def validate_release(directory):
         raise ValueError("Release assets do not match their immutable version.")
 
 
+def publish(source, output):
+    if output.is_symlink() or any(path.is_symlink() for path in output.rglob("*")):
+        raise ValueError("Site output must not contain symlinks.")
+    releases = output / "app/releases"
+    if releases.exists():
+        for directory in releases.iterdir():
+            validate_release(directory)
+    paths = [path for path in source.rglob("*") if path.is_file()]
+    # Keep entrypoints on the previous release until every new asset is available.
+    paths.sort(key=lambda path: (path.relative_to(source).as_posix() == "app/index.html",
+                                 path.suffix == ".html"))
+    for path in paths:
+        target = output / path.relative_to(source)
+        if target.is_file() and target.read_bytes() == path.read_bytes():
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=target.parent, prefix=".murmur-", delete=False) as temporary:
+            staging = Path(temporary.name)
+        try:
+            shutil.copyfile(path, staging)
+            staging.chmod(0o644)
+            os.replace(staging, target)
+        finally:
+            staging.unlink(missing_ok=True)
+
+
 def build(repository, with_app=False):
     website, browser = repository / "website", repository / "browser"
     generator = os.environ.get("GENERETO", "genereto")
@@ -123,9 +149,7 @@ def build(repository, with_app=False):
             "date-mismatch", "empty-links", "internal-links", "unresolved-placeholders",
         ], check=True, env=environment)
         output = website / "output"
-        if output.exists():
-            shutil.rmtree(output)
-        shutil.copytree(work / "output", output)
+        publish(work / "output", output)
         print(f"Site ready: {output}")
 
 
