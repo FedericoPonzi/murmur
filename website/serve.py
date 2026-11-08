@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import signal
 import time
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 
 class PreviewHandler(SimpleHTTPRequestHandler):
@@ -53,12 +53,22 @@ class PreviewHandler(SimpleHTTPRequestHandler):
         if not url.path.startswith("/api/"):
             super().do_GET()
             return
-        if not re.fullmatch(r"/api/(?:me|feed/[^/]+)", url.path) or url.query:
+        page = re.fullmatch(r"/api/feed/[^/]+/page", url.path)
+        valid = not url.query
+        if page and url.query:
+            pairs = parse_qsl(url.query, keep_blank_values=True)
+            parameters = dict(pairs)
+            valid = len(pairs) == 2 and set(parameters) == {"anchor", "before"} \
+                and all(re.fullmatch(r"[0-9]{1,20}", value) for value in parameters.values())
+            if valid:
+                anchor, before = int(parameters["anchor"]), int(parameters["before"])
+                valid = anchor <= 2**64 - 1 and max(0, anchor - 99) < before <= anchor
+        if not (page or re.fullmatch(r"/api/(?:me|feed/[^/]+)", url.path)) or not valid:
             self.error(404, "Unknown bridge read endpoint.")
         elif self.bridge is None:
             self.error(503, "Read-only bridge is not configured.")
         else:
-            self.proxy(url.path)
+            self.proxy(url.path + ("?" + url.query if url.query else ""))
 
     def do_HEAD(self):
         url = self.request_url()

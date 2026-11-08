@@ -1,13 +1,13 @@
 use crate::veilid::{Error, Result};
 use axum::{
-    extract::{Path, State},
+    extract::{rejection::QueryRejection, Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Response},
     routing::get,
     Json, Router,
 };
-use murmur_model::Feed;
-use serde::Serialize;
+use murmur_model::{Feed, FeedPage, PageCursor};
+use serde::{Deserialize, Serialize};
 use std::{future::Future, sync::Arc};
 use veilid_core::RecordKey;
 
@@ -21,6 +21,11 @@ pub struct Me {
 pub trait FeedSource: Send + Sync + 'static {
     fn me(&self) -> Me;
     fn feed(self: Arc<Self>, key: RecordKey) -> impl Future<Output = Result<Feed>> + Send;
+    fn page(
+        self: Arc<Self>,
+        key: RecordKey,
+        cursor: Option<PageCursor>,
+    ) -> impl Future<Output = Result<FeedPage>> + Send;
 }
 
 impl FeedSource for crate::veilid::Node {
@@ -34,6 +39,10 @@ impl FeedSource for crate::veilid::Node {
 
     async fn feed(self: Arc<Self>, key: RecordKey) -> Result<Feed> {
         crate::veilid::Node::feed(self, key).await
+    }
+
+    async fn page(self: Arc<Self>, key: RecordKey, cursor: Option<PageCursor>) -> Result<FeedPage> {
+        crate::veilid::Node::feed_page(self, key, cursor).await
     }
 }
 
@@ -50,6 +59,7 @@ pub fn router<S: FeedSource>(source: Arc<S>) -> Router {
         .route("/", get(|| async { Html(include_str!("../index.html")) }))
         .route("/api/me", get(me::<S>))
         .route("/api/feed/{dht_key}", get(feed::<S>))
+        .route("/api/feed/{dht_key}/page", get(page::<S>))
         .with_state(source)
 }
 
@@ -65,6 +75,34 @@ async fn feed<S: FeedSource>(
         .parse::<RecordKey>()
         .map_err(|_| Error::new(400, "invalid Veilid RecordKey"))?;
     source.feed(key).await.map(Json)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PageQuery {
+    anchor: Option<u64>,
+    before: Option<u64>,
+}
+
+async fn page<S: FeedSource>(
+    State(source): State<Arc<S>>,
+    Path(key): Path<String>,
+    query: std::result::Result<Query<PageQuery>, QueryRejection>,
+) -> Result<Json<FeedPage>> {
+    let Query(query) = query.map_err(|_| Error::new(400, "invalid feed page query"))?;
+    let cursor = match (query.anchor, query.before) {
+        (None, None) => None,
+        (Some(anchor), Some(before)) => {
+            let cursor = PageCursor { anchor, before };
+            murmur_model::page_indexes(Some(anchor), Some(cursor))?;
+            Some(cursor)
+        }
+        _ => return Err(Error::new(400, "provide both anchor and before")),
+    };
+    let key = key
+        .parse::<RecordKey>()
+        .map_err(|_| Error::new(400, "invalid Veilid RecordKey"))?;
+    source.page(key, cursor).await.map(Json)
 }
 
 #[cfg(test)]
@@ -104,6 +142,36 @@ mod tests {
                     latest_post_index: None,
                 },
                 posts: Vec::<Post>::new(),
+            })
+        }
+
+        async fn page(
+            self: Arc<Self>,
+            key: RecordKey,
+            cursor: Option<PageCursor>,
+        ) -> Result<FeedPage> {
+            if let Some(status) = self.status {
+                return Err(Error::new(status, "upstream failed"));
+            }
+            let (indexes, next) = murmur_model::page_indexes(Some(105), cursor)?;
+            Ok(FeedPage {
+                feed: Feed {
+                    record_key: key.to_string(),
+                    metadata: Metadata {
+                        author_name: "Reader".into(),
+                        bio: String::new(),
+                        latest_post_index: Some(105),
+                    },
+                    posts: indexes
+                        .into_iter()
+                        .map(|index| Post {
+                            index,
+                            timestamp: 1,
+                            content: format!("Post {index}"),
+                        })
+                        .collect(),
+                },
+                next,
             })
         }
     }
@@ -150,6 +218,41 @@ mod tests {
             let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
             assert_eq!(value["error"], "upstream failed");
         }
+    }
+
+    #[tokio::test]
+    async fn page_endpoint_preserves_recent_api_and_checks_cursors() {
+        let response = request(&format!("/api/feed/{KEY}/page"), None).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let value: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 16384).await.unwrap()).unwrap();
+        assert_eq!(value["posts"][0]["index"], 105);
+        assert_eq!(value["next"], serde_json::json!({"anchor":105,"before":86}));
+        let response = request(&format!("/api/feed/{KEY}/page?anchor=105&before=86"), None).await;
+        let value: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 16384).await.unwrap()).unwrap();
+        assert_eq!(value["posts"][0]["index"], 85);
+        for query in [
+            "anchor=105",
+            "before=86",
+            "anchor=x&before=86",
+            "anchor=105&before=0",
+            "anchor=105&before=86&extra=1",
+            "anchor=105&anchor=105&before=86",
+        ] {
+            let response = request(&format!("/api/feed/{KEY}/page?{query}"), None).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{query}");
+            let value: serde_json::Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 16384).await.unwrap())
+                    .unwrap();
+            assert!(value["error"].is_string());
+        }
+        assert_eq!(
+            request(&format!("/api/feed/{KEY}/page?anchor=5&before=2"), None)
+                .await
+                .status(),
+            StatusCode::GONE
+        );
     }
 
     #[tokio::test]

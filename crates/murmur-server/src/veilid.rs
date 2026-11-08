@@ -1,7 +1,10 @@
 use murmur_core::{
     commit_post, decode, encode, read_metadata, validate_schema, RecordIo, VeilidRecord,
 };
-use murmur_model::{next_index, validate_profile, Feed, Metadata, ModelError, Post, OWNER_SUBKEYS};
+use murmur_model::{
+    next_index, validate_profile, Feed, FeedPage, Metadata, ModelError, PageCursor, Post,
+    OWNER_SUBKEYS,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File, OpenOptions},
@@ -416,21 +419,29 @@ impl Node {
     }
 
     pub async fn feed(self: Arc<Self>, key: RecordKey) -> Result<Feed> {
+        self.feed_page(key, None).await.map(|page| page.feed)
+    }
+
+    pub async fn feed_page(
+        self: Arc<Self>,
+        key: RecordKey,
+        cursor: Option<PageCursor>,
+    ) -> Result<FeedPage> {
         tracked(&self.workers, {
             let node = self.clone();
-            async move { node.read_feed(key).await }
+            async move { node.read_page(key, cursor).await }
         })
         .await
     }
 
-    async fn read_feed(&self, key: RecordKey) -> Result<Feed> {
+    async fn read_page(&self, key: RecordKey, cursor: Option<PageCursor>) -> Result<FeedPage> {
         let _reader = self
             .readers
             .try_acquire()
             .map_err(|_| Error::new(503, "too many feed requests; retry later"))?;
         let _operation = deadline(async { Ok(self.operations.lock().await) }, 30).await?;
         self.check_ready()?;
-        murmur_core::read_feed(&self.context, Some(&self.key()), key)
+        murmur_core::read_feed_page(&self.context, Some(&self.key()), key, cursor)
             .await
             .map_err(Into::into)
     }

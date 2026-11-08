@@ -255,6 +255,17 @@ class ServerTests(unittest.TestCase):
             ("GET", "/api/feed/redirect", None),
         ])
 
+    def test_proxy_forwards_only_bounded_page_queries(self):
+        self.requests.clear()
+        for path in ("/api/feed/key/page", "/api/feed/key/page?anchor=105&before=86"):
+            self.assertEqual(self.request(path)[0], 200)
+            self.assertEqual(self.requests[-1][1], path)
+        count = len(self.requests)
+        for query in ("anchor=105", "before=86", "anchor=x&before=86", "anchor=105&before=0",
+                      "anchor=105&before=86&extra=1", "anchor=105&anchor=105&before=86"):
+            self.assertEqual(self.request("/api/feed/key/page?" + query)[0], 404)
+        self.assertEqual(len(self.requests), count)
+
     def test_proxy_errors_and_invalid_configuration(self):
         unconfigured = self.start(create_preview_server(self.root, port=0))
         self.assertEqual(self.request("/api/me", server=unconfigured)[0], 503)
