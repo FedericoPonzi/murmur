@@ -49,6 +49,9 @@ def check():
         return element(identity).get_attribute("textContent")
 
     def click(identity):
+        view = driver.execute_script("return arguments[0].closest('section[id^=\"view-\"]')?.id", element(identity))
+        if view in ("view-home", "view-profile", "view-following", "view-settings") and not element(view).is_displayed():
+            click(view.replace("view-", "nav-"))
         driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'})", element(identity))
         element(identity).click()
 
@@ -71,6 +74,27 @@ def check():
         draft = "Keep this encrypted draft through updates and browser restarts."
         element("content").send_keys(draft)
         WebDriverWait(driver, 30).until(lambda _: text("draft-status") == "Draft saved on this browser.")
+        click("nav-profile")
+        click("new-post")
+        assert driver.execute_script("return document.activeElement === document.getElementById('content')")
+        assert element("content").get_attribute("value") == draft
+        for width in (1280, 760, 390, 320):
+            driver.set_window_size(width, 900)
+            click("new-post")
+            assert driver.execute_script("""
+                const byId = id => document.getElementById(id);
+                const header = byId('app-header').getBoundingClientRect();
+                const field = byId('content').getBoundingClientRect();
+                const sidebar = byId('session-sidebar').getBoundingClientRect();
+                const feed = byId('session-content').getBoundingClientRect();
+                const nav = byId('app-navigation').getBoundingClientRect();
+                return document.documentElement.scrollWidth <= innerWidth
+                    && byId('session-sidebar').scrollWidth <= byId('session-sidebar').clientWidth
+                    && header.height <= 64 && field.top >= header.bottom && field.bottom <= innerHeight
+                    && (innerWidth > 760 ? sidebar.right <= feed.left : nav.bottom <= innerHeight && nav.top > field.bottom);
+            """), f"Feed-first layout is unusable at {width}px."
+            driver.save_screenshot(str(artifacts / f"home-{width}.png"))
+        driver.set_window_size(1280, 900)
         original_tab = driver.current_window_handle
         driver.switch_to.new_window("tab")
         driver.get(origin)

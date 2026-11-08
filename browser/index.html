@@ -11,6 +11,10 @@
 <body>
 <a class="skip" href="#main-content">Skip to content</a>
 <!-- site_header -->
+<header id="app-header" hidden>
+<a class="brand" href="../index.html">Murmur</a>
+<nav aria-label="App links"><a href="../docs/index.html">Docs</a></nav>
+</header>
 <main id="main-content" class="app-shell">
 <section id="auth" class="auth-layout">
 <div class="auth-intro">
@@ -93,59 +97,38 @@
 <aside id="session-sidebar" class="app-panel">
 <div class="session-person">
 <span id="session-avatar" class="avatar" aria-hidden="true">M</span>
-<div><strong id="session-name">Your corner of the web</strong><span id="connection-badge">Connecting</span></div>
-</div>
-<div id="author-tools" class="sidebar-composer">
-<label for="content">What's on your mind?</label>
-<textarea id="content" maxlength="8000" placeholder="A small thought, shared." aria-describedby="content-help content-count draft-status"></textarea>
-<small id="content-help">Public posts. Up to 280 characters.</small>
-<div class="composer-footer"><output id="content-count" aria-live="polite">0 / 280</output><button id="publish" disabled>Publish post</button></div>
-<small id="draft-status" role="status"></small>
+<div><strong id="session-name">Murmur</strong><span id="connection-badge">Connecting</span></div>
 </div>
 <nav id="app-navigation" aria-label="Application">
 <button id="nav-home" class="quiet-button" aria-controls="view-home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v11h-7v-7h-4v7H3z"/></svg>Home</button>
-<button id="nav-profile" class="quiet-button" aria-controls="view-profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>My profile</button>
-<button id="nav-following" class="quiet-button" aria-controls="view-following"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg>Add feed / Following</button>
-<button id="nav-settings" class="quiet-button" aria-controls="view-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M12 3v18M19 3v18M2 8h6M9 16h6M16 8h6"/></svg>Settings &amp; backups</button>
+<button id="nav-profile" class="quiet-button" aria-controls="view-profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>Profile</button>
+<button id="nav-following" class="quiet-button" aria-controls="view-following"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg>Following</button>
+<button id="nav-settings" class="quiet-button" aria-controls="view-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M12 3v18M19 3v18M2 8h6M9 16h6M16 8h6"/></svg>Settings</button>
 </nav>
-<div id="author-session">
-<button id="stop" class="quiet-button" disabled>Logout</button>
-<button id="reconnect" class="quiet-button" disabled>Retry connection</button>
-<p class="preview-notice">Logout stops this node and forgets remembered access, but keeps your identity and saved work. Closing the tab stops its node; a remembered device unlocks when you return.</p>
-</div>
-<div id="reader-tools" hidden>
-<p class="eyebrow">Read-only session</p>
-<p>Your author identity stays locked. This node reads public feeds only.</p>
-<button id="stop-reader" class="quiet-button" disabled>Stop reading</button>
-<button id="retry-reader" class="quiet-button" disabled>Retry connection</button>
-</div>
+<button id="new-post" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5-12 12H4v-5zM13 6l5 5"/></svg>New post</button>
 <div id="sidebar-status"></div>
-<details id="session-diagnostics" class="sidebar-diagnostics">
-<summary>Node diagnostics</summary>
-<dl>
-<dt>Session</dt><dd id="debug-session">Stopped</dd>
-<dt>App connection</dt><dd id="debug-connection">Stopped</dd>
-<dt>Last reported attachment</dt><dd id="debug-attachment">Not reported</dd>
-<dt>Routing peers (reliable / live)</dt><dd id="debug-peers">Not reported</dd>
-<dt>Traffic (down / up)</dt><dd id="debug-traffic">Not reported</dd>
-<dt>Last successful check</dt><dd id="debug-checked">Not yet checked</dd>
-<dt>Pending requests</dt><dd id="debug-requests">0</dd>
-<dt>Storage starts</dt><dd><output id="storage"></output></dd>
-</dl>
-<p class="preview-notice">Local node diagnostics, not a guarantee of feed availability. No author credentials are shown.</p>
-</details>
-<details class="response-details"><summary>Last response</summary><pre id="feed" aria-label="Feed response"></pre></details>
 </aside>
 <div id="session-content" class="app-panel">
-<button id="sidebar-jump" class="quiet-button">Back to navigation</button>
 <p id="follow-status" role="status"></p>
 <section id="view-home" aria-labelledby="timeline-heading">
-<div class="stream-heading"><div><p class="eyebrow">Your people. Your pace.</p><h1 id="timeline-heading" tabindex="-1">Home</h1></div><output id="unread-count" aria-live="polite">0 unread cached posts</output></div>
-<button id="mark-read" class="quiet-button" disabled>Mark cached posts as read</button>
-<p class="preview-notice">Your latest locally confirmed posts and recent unmuted followed feeds, sorted by reported time. Authors' clocks can differ. Cached snapshots may be stale.</p>
-<button id="refresh-timeline" disabled>Refresh followed feeds</button>
+<h1 id="timeline-heading" class="visually-hidden" tabindex="-1">Home</h1>
+<div class="stream-heading"><span>Following</span><output id="unread-count" aria-live="polite">0 unread cached posts</output></div>
+<div id="author-tools" class="feed-composer">
+<span id="composer-avatar" class="avatar composer-avatar" aria-hidden="true">M</span>
+<label for="content" class="visually-hidden">What's on your mind?</label>
+<textarea id="content" maxlength="8000" placeholder="What's on your mind?" aria-describedby="content-help content-count draft-status"></textarea>
+<small id="content-help">Public posts. Up to 280 characters.</small>
+<div class="composer-footer"><output id="content-count" aria-live="polite">0 / 280</output><button id="publish" disabled>Post</button></div>
+<small id="draft-status" role="status"></small>
+</div>
+<div class="feed-toolbar">
+<button id="refresh-timeline" class="quiet-button" disabled>Refresh</button>
+<button id="mark-read" class="quiet-button" disabled>Mark as read</button>
 <button id="cancel-timeline" class="quiet-button" disabled>Stop refresh</button>
-<details class="feed-health"><summary>Feed freshness &amp; read errors</summary><ul id="feed-status"></ul></details>
+<details class="feed-health"><summary>Feed details</summary>
+<p class="preview-notice">Your latest locally confirmed posts and recent unmuted followed feeds, sorted by reported time. Authors' clocks can differ. Cached snapshots may be stale.</p>
+<ul id="feed-status"></ul></details>
+</div>
 <div id="timeline"></div>
 </section>
 <section id="view-profile" aria-label="My profile" hidden>
@@ -180,6 +163,16 @@
 </section>
 <section id="view-settings" aria-labelledby="settings-heading" hidden>
 <h1 id="settings-heading" tabindex="-1">Settings &amp; backups</h1>
+<div id="author-session">
+<button id="stop" class="quiet-button" disabled>Logout</button>
+<button id="reconnect" class="quiet-button" disabled>Retry connection</button>
+<p class="preview-notice">Logout stops this node and forgets remembered access, but keeps your identity and saved work. Closing the tab stops its node; a remembered device unlocks when you return.</p>
+</div>
+<div id="reader-tools" hidden>
+<p>Read-only session. Your author identity stays locked.</p>
+<button id="stop-reader" class="quiet-button" disabled>Stop reading</button>
+<button id="retry-reader" class="quiet-button" disabled>Retry connection</button>
+</div>
 <details id="backup-settings">
 <summary>Back up your identity</summary>
 <p class="preview-notice">Download and check a backup before using valuable data. Keep its passphrase separately. Backups are not permanent network archives.</p>
@@ -213,6 +206,21 @@
 </form>
 </details>
 <div id="network-settings-slot"></div>
+<details id="session-diagnostics" class="sidebar-diagnostics">
+<summary>Node diagnostics</summary>
+<dl>
+<dt>Session</dt><dd id="debug-session">Stopped</dd>
+<dt>App connection</dt><dd id="debug-connection">Stopped</dd>
+<dt>Last reported attachment</dt><dd id="debug-attachment">Not reported</dd>
+<dt>Routing peers (reliable / live)</dt><dd id="debug-peers">Not reported</dd>
+<dt>Traffic (down / up)</dt><dd id="debug-traffic">Not reported</dd>
+<dt>Last successful check</dt><dd id="debug-checked">Not yet checked</dd>
+<dt>Pending requests</dt><dd id="debug-requests">0</dd>
+<dt>Storage starts</dt><dd><output id="storage"></output></dd>
+</dl>
+<p class="preview-notice">Local node diagnostics, not a guarantee of feed availability. No author credentials are shown.</p>
+</details>
+<details class="response-details"><summary>Last response</summary><pre id="feed" aria-label="Feed response"></pre></details>
 </section>
 <section id="view-following" aria-labelledby="following-heading" hidden>
 <h1 id="following-heading" tabindex="-1">Add a feed</h1>

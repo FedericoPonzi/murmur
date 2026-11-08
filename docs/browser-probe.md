@@ -87,12 +87,14 @@ an archive. Only one selected feed's pages are kept in memory (at most 100);
 switching feeds, locking, stopping or reloading discards them. These snapshots
 can become stale. Home and its persistent followed-feed cache still use the
 newest 20, and locally saved author history is separate from network retention.
-The desktop app keeps the composer, navigation, connection status and expandable
-node diagnostics in a left sidebar, with the selected feed on the right.
-On narrow screens the sidebar stacks above the feed; **Back to navigation**
-returns to its controls. Guest sessions have the same reading navigation but
-no composer or author tools. Freshness/errors and the last raw response remain
-available in expandable diagnostics rather than filling the feed.
+The active app uses a compact header and navigation rail, with a composer above
+the Home feed. **New post** returns to Home and focuses that same composer,
+preserving an existing draft. Narrow screens use bottom navigation and a
+floating **New post** button. Guest sessions have reading navigation but no
+composer or author tools. **Settings** contains Logout, reconnect, backups,
+node diagnostics and the last raw response. **Feed details** holds freshness
+information and read errors. Homepage, documentation and sign-in screens keep
+the product-site layout.
 The app monitors attachment after connecting. Going offline disables network
 actions without discarding saved work. **Retry connection** restarts networking;
 reconnecting checks an interrupted publication but never sends it automatically.

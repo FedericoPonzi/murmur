@@ -16,6 +16,7 @@ const requests = new Map();
 const renderDiagnostics = () => {
   $('session-name').textContent = publicIdentity?.author_name ?? 'Read-only reader';
   $('session-avatar').textContent = publicIdentity ? Array.from(publicIdentity.author_name.trim())[0]?.toLocaleUpperCase() ?? 'M' : 'M';
+  $('composer-avatar').textContent = $('session-avatar').textContent;
   $('connection-badge').textContent = active ? attached ? 'Connected to Veilid' : 'Connecting / offline' : 'Local preview';
   $('debug-session').textContent = active ? guest ? 'Read-only reader' : 'Author' : authenticating ? 'Starting' : 'Stopped';
   $('debug-connection').textContent = active ? attached ? 'Online' : 'Connecting / offline' : 'Stopped';
@@ -150,10 +151,11 @@ const controls = () => {
   for (const id of ['profile-fields', 'save-profile']) $(id).disabled = !active || guest || !attached || busy;
   $('copy-key').disabled = !active || guest;
   $('read-own').disabled = !active || guest || !attached || busy;
+  $('new-post').disabled = !active || guest || busy;
   $('reconnect').disabled = !active || attached || busy;
   $('retry-reader').disabled = !active || attached || busy;
   $('stop-reader').disabled = !active;
-  $('publish').textContent = $('content').readOnly ? 'Retry saved post' : 'Publish post';
+  $('publish').textContent = $('content').readOnly ? 'Retry saved post' : 'Post';
   $('publish').disabled = $('read').disabled = !active || !attached || busy;
   const length = Array.from($('content').value).length;
   $('content-count').textContent = `${length} / 280`;
@@ -217,12 +219,17 @@ const renderTimeline = () => {
     }
     if (entry.local) {
       const local = document.createElement('small');
-      local.textContent = 'Confirmed on this browser';
+      local.textContent = 'Published - saved on this device';
       body.append(local);
     }
     return article;
   }));
-  if (!entries.length) $('timeline').textContent = 'Your Home is quiet. Add a feed and refresh, or publish your first thought.';
+  if (!entries.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = guest ? 'No posts yet. Follow a feed to get started.' : 'No posts yet. Follow a feed or write your first post.';
+    $('timeline').append(empty);
+  }
   $('feed-status').replaceChildren(...loadFollows(localStorage).map(key => {
     const item = document.createElement('li');
     const cached = snapshots.get(key), progress = feedProgress.get(key);
@@ -399,9 +406,11 @@ for (const name of ['home', 'profile', 'following', 'settings']) {
   };
 }
 $('back-home').onclick = () => $('nav-home').click();
-$('sidebar-jump').onclick = () => {
-  $('session-sidebar').scrollIntoView({ block: 'start' });
-  $(`nav-${currentView === 'feed' ? 'home' : currentView}`).focus({ preventScroll: true });
+$('new-post').onclick = () => {
+  if (!active || guest || busy) return;
+  showView('home');
+  $('author-tools').scrollIntoView({ block: 'start' });
+  $('content').focus({ preventScroll: true });
 };
 $('follow-selected').onclick = () => { $('key').value = selectedKey; $('follow').click(); };
 $('share-selected').onclick = () => copyFeedLink(selectedKey);
@@ -410,8 +419,10 @@ const showMode = next => {
   $('auth-error').textContent = '';
   clearPassphrases();
   $('auth').hidden = active;
+  document.body.classList.toggle('app-active', active);
+  $('app-header').hidden = !active;
   $('session').hidden = !active;
-  for (const id of ['identity-panel', 'author-tools', 'history-tools']) $(id).hidden = guest;
+  for (const id of ['identity-panel', 'author-tools', 'history-tools', 'new-post']) $(id).hidden = guest;
   $('reader-tools').hidden = !guest;
   $('author-session').hidden = $('nav-profile').hidden = $('backup-settings').hidden = guest;
   $(active ? 'sidebar-status' : 'auth-status').append($('status'));

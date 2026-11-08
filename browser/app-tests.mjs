@@ -109,8 +109,9 @@ try {
   await wait(() => !element('session').hidden);
   assert(frame.contentWindow.rememberChoice === true, 'Remember choice did not reach authentication.');
   assert(element('stop').textContent === 'Logout', 'Session action is still labelled Lock identity.');
-  assert(element('session-sidebar').contains(element('content')), 'Composer is not in the navigation sidebar.');
-  assert(element('session-sidebar').contains(element('session-diagnostics')), 'Diagnostics are not in the sidebar.');
+  assert(element('view-home').contains(element('content')), 'Composer is not above the Home feed.');
+  assert(element('view-settings').contains(element('session-diagnostics')), 'Settings omit node diagnostics.');
+  assert(!element('app-header').hidden, 'Active sessions have no compact app navigation.');
   assert(element('follow-list').textContent.includes('VLD0:existing'), 'Author session did not load saved follows.');
   frame.contentWindow.failDraft = true;
   element('content').value = 'An unsaved draft before connecting';
@@ -131,6 +132,10 @@ try {
   await wait(() => element('draft-status')?.textContent === 'Draft saved on this browser.');
   element('nav-profile').click();
   assert(!element('view-profile').hidden && element('view-home').hidden, 'Profile navigation did not change views.');
+  element('new-post').click();
+  assert(!element('view-home').hidden && frame.contentDocument.activeElement === element('content'),
+    'New post did not open and focus the inline composer.');
+  assert(element('content').value === draft, 'New post cleared the existing draft.');
   element('nav-following').click();
   assert(!element('view-following').hidden && frame.contentDocument.activeElement === element('key'), 'Add feed did not focus the key input.');
   element('nav-settings').click();

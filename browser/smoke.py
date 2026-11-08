@@ -134,8 +134,8 @@ def check(storage_only=False):
                 const sidebar = document.getElementById('session-sidebar');
                 const content = document.getElementById('session-content');
                 const left = sidebar.getBoundingClientRect(), right = content.getBoundingClientRect();
-                return sidebar.contains(document.getElementById('author-tools'))
-                    && sidebar.contains(document.getElementById('session-diagnostics'))
+                return document.getElementById('view-home').contains(document.getElementById('author-tools'))
+                    && document.getElementById('view-settings').contains(document.getElementById('session-diagnostics'))
                     && sidebar.contains(document.getElementById('status'))
                     && (innerWidth > 760 ? left.right <= right.left : left.bottom <= right.top);
             """), f"Social sidebar/feed layout is not usable at {width}px."
@@ -173,6 +173,7 @@ def check(storage_only=False):
             driver.close()
             driver.switch_to.window(first)
             content = "Murmur disposable browser test <b>literal text</b>"
+            click("new-post")
             element("content").send_keys(content)
             click("publish")
             wait.until(lambda _: content in text("feed"))
@@ -213,6 +214,7 @@ def check(storage_only=False):
             wait.until(lambda _: "Invalid Veilid RecordKey" in text("status"))
             assert text("feed") == previous_feed
         draft = "An unpublished encrypted draft"
+        click("new-post")
         element("content").send_keys(draft)
         wait.until(lambda _: text("draft-status") == "Draft saved on this browser.")
         click("stop")
@@ -304,6 +306,7 @@ def check(storage_only=False):
             assert text("own-key") == key
             wait.until(lambda _: element("read").is_enabled())
             content = "Disposable post from the restored browser"
+            click("new-post")
             element("content").send_keys(content)
             click("publish")
             wait.until(lambda _: content in text("feed"))
