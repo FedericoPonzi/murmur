@@ -27,7 +27,7 @@ backups; interrupted publications are. **Your saved posts** shows up to 1000
 locally confirmed posts, including those recovered from a backup.
 Use **Edit public profile** to change your name or bio without changing your
 RecordKey. **Copy RecordKey** lets another reader find the same feed.
-Lock or reload the page, then unlock with the same passphrase to restore the
+Log out or reload the page, then unlock with the same passphrase to restore the
 same key and posts. An uncertain publication keeps its original text for retry;
 confirmation releases the composer without advancing the index twice.
 To read without creating or unlocking an author, choose **Read without an
@@ -163,8 +163,21 @@ Only public status, keys, and feeds cross the worker boundary.
 
 New browser identities use passphrase-protected device keys and encrypted table
 values. The earlier unpassworded developer namespace is left untouched, not
-imported into the new identity. Reloading starts locked; no passphrase is saved
-by the page. Unlocking still trusts the served application code.
+imported into the new identity. By default, reloading starts locked.
+**Remember this device** is optional and restores access after reloads and
+browser restarts. It stores the unlocking passphrase and bound RecordKey wrapped
+with AES-GCM under a non-extractable Web Crypto key in a separate IndexedDB
+database, never as plaintext or in localStorage. This is browser-profile
+convenience, not an OS login, hardware-backed vault, or protection against
+same-origin scripts. Anyone with access to that browser profile may publish.
+Keep your passphrase and verified backup even on a remembered device.
+
+**Logout** stops the author node and removes remembered access without deleting
+the identity, saved draft, posts, or follows. It does not revoke restored copies
+on other devices. **Forget remembered access** on the unlock screen removes
+only that device convenience; your passphrase still works. Damaged or unknown
+remembered-access versions fail explicitly rather than overwriting them.
+Unlocking still trusts the served application code.
 Before using valuable data, open **Back up your identity**, download an encrypted
 backup, and select the saved file under **Check the saved backup** to verify it.
 Keep the backup passphrase separately. Forgetting the browser passphrase or
@@ -178,6 +191,37 @@ does not guarantee permanent network retention. It includes pending work and
 up to 1000 locally confirmed posts, not a complete remote archive.
 Device/origin changes do not migrate the identity. One tab may unlock an identity;
 the browser lock lasts until shutdown or worker termination.
+If another tab owns it, the unlock form explains how to release it: choose
+**Logout** in that tab, or close it, then retry. **Retry remembered session**
+does not need the passphrase again. No tab silently takes over the publisher.
+
+## Updating the local preview
+
+Keep the same origin (scheme, hostname and port) and browser profile.
+`python3 website/build.py --with-app` publishes new assets before replacing the
+app entrypoint. Runtime modules, worker, WASM and app CSS use a content-addressed
+release directory. Existing tabs keep their loaded session and old release;
+updates never force reload or Logout. Returning to the new version restores a
+remembered identity, or asks for the passphrase when remembering was not enabled.
+Wait for **Draft saved on this browser** before refreshing; the app warns when
+an unsaved draft would be discarded, subject to browser confirmation rules.
+
+Retain `app/releases/` from earlier builds when updating the served directory.
+Do not delete those files while old pages may still start or restart a worker.
+The builder preserves them, rejects modified immutable releases, and packages
+all retained releases. Roll back by rebuilding the earlier compatible source
+and publishing its entrypoint while keeping both release directories.
+Storage namespaces and the identity/backup formats are unchanged by this batch.
+Future format changes require their own migration and rollback checks; this
+is not permission to downgrade across arbitrary incompatible storage formats.
+Pages opened before version-pinned assets were introduced should save work
+and reload once to acquire this protection. Browser shutdown/suspension still
+stops or pauses networking; a remembered identity is not a background publisher.
+
+Run `python3 browser/upgrade-smoke.py` after assembling the app for an opt-in
+real-node check of tab conflicts, live updates, reload, browser restart, Logout
+and manual recovery. It uses a disposable browser profile/site and preserves
+logs/screenshots under `/tmp/murmur-upgrade-check-*`.
 
 ## Checks
 

@@ -11,13 +11,17 @@ import subprocess
 import tempfile
 from urllib.parse import unquote
 
-APP_ASSETS = ("app.mjs", "worker.mjs", "feeds.mjs", "device-session.mjs",
-              "pkg/murmur_browser.js", "pkg/murmur_browser_bg.wasm", "style.css")
+# Changing this order would invalidate already-published release IDs.
+RELEASE_V1_ORDER = ("app.mjs", "worker.mjs", "feeds.mjs", "device-session.mjs",
+                    "pkg/murmur_browser.js", "pkg/murmur_browser_bg.wasm", "style.css")
+APP_ASSETS = RELEASE_V1_ORDER
 
 
 def release_id(files):
     digest = hashlib.sha256()
-    for name in APP_ASSETS:
+    for name in (*RELEASE_V1_ORDER, *sorted(set(files) - set(RELEASE_V1_ORDER))):
+        if name not in files:
+            continue
         body = files[name]
         digest.update(name.encode() + b"\0" + len(body).to_bytes(8, "big") + body)
     return digest.hexdigest()
@@ -27,10 +31,13 @@ def validate_release(directory):
     paths = list(directory.rglob("*"))
     if directory.is_symlink() or any(path.is_symlink() for path in paths):
         raise ValueError("Release assets must not contain symlinks.")
-    if {path.relative_to(directory).as_posix() for path in paths if path.is_file()} != set(APP_ASSETS):
+    files = {path.relative_to(directory).as_posix(): path.read_bytes() for path in paths if path.is_file()}
+    required = {"app.mjs", "worker.mjs", "pkg/murmur_browser.js", "pkg/murmur_browser_bg.wasm", "style.css"}
+    if not required <= files.keys() or any(Path(name).suffix not in {".mjs", ".js", ".wasm", ".css", ".svg"} for name in files):
         raise ValueError("Release assets are missing or unexpected.")
-    if directory.name != release_id({name: (directory / name).read_bytes() for name in APP_ASSETS}):
+    if directory.name != release_id(files):
         raise ValueError("Release assets do not match their immutable version.")
+    return files.keys()
 
 
 def publish(source, output):
@@ -40,7 +47,20 @@ def publish(source, output):
     if releases.exists():
         for directory in releases.iterdir():
             validate_release(directory)
-    paths = [path for path in source.rglob("*") if path.is_file()]
+    source_releases = source / "app/releases"
+    if source_releases.exists():
+        releases.mkdir(parents=True, exist_ok=True)
+        for directory in source_releases.iterdir():
+            validate_release(directory)
+            target = releases / directory.name
+            if target.exists():
+                continue
+            with tempfile.TemporaryDirectory(prefix=".murmur-release-", dir=releases.parent) as temporary:
+                complete = Path(temporary) / directory.name
+                shutil.copytree(directory, complete)
+                validate_release(complete)
+                os.replace(complete, target)
+    paths = [path for path in source.rglob("*") if path.is_file() and not path.is_relative_to(source_releases)]
     # Keep entrypoints on the previous release until every new asset is available.
     paths.sort(key=lambda path: (path.relative_to(source).as_posix() == "app/index.html",
                                  path.suffix == ".html"))
@@ -122,6 +142,7 @@ def build(repository, with_app=False):
             shutil.copy2(browser / asset, assembled / asset)
         if with_app:
             files = {name: (browser / name).read_bytes() for name in APP_ASSETS}
+            files["style.css"] = files["style.css"].replace(b'url("./favicon.svg")', b'url("../../../favicon.svg")')
             version = release_id(files)
             for name, body in files.items():
                 target = assembled / "app/releases" / version / name

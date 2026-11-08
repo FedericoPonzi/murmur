@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urljoin, urlsplit
 
 from serve import create_preview_server
-from build import publish
+from build import APP_ASSETS, publish, release_id
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 WASM = b"\0asm\1\0\0\0"
@@ -109,7 +109,7 @@ class BuildTests(unittest.TestCase):
         app_css = urljoin(base + "app/index.html", Links(self.read("app/index.html")).stylesheets[0])
         self.assertNotEqual(doc_css, app_css)
         self.assertEqual((self.output / urlsplit(app_css).path.removeprefix("/murmur/")).read_bytes(),
-                         (self.output / "style.css").read_bytes())
+                         (self.output / "style.css").read_bytes().replace(b'url("./favicon.svg")', b'url("../../../favicon.svg")'))
         self.assertEqual((self.output / "style.css").read_bytes(), (REPOSITORY / "browser/style.css").read_bytes())
         self.assertEqual((self.output / "app/pkg/murmur_browser_bg.wasm").read_bytes(), WASM)
         self.assertEqual(self.read("app/worker.mjs"), (REPOSITORY / "browser/worker.mjs").read_text())
@@ -125,7 +125,10 @@ class BuildTests(unittest.TestCase):
         release = self.output / "app" / Path(script[1]).parent
         for name in ("app.mjs", "worker.mjs", "feeds.mjs", "device-session.mjs",
                      "pkg/murmur_browser.js", "pkg/murmur_browser_bg.wasm", "style.css"):
-            self.assertEqual((release / name).read_bytes(), (self.root / "browser" / name).read_bytes())
+            expected = (self.root / "browser" / name).read_bytes()
+            if name == "style.css":
+                expected = expected.replace(b'url("./favicon.svg")', b'url("../../../favicon.svg")')
+            self.assertEqual((release / name).read_bytes(), expected)
         self.assertIn(f'href="./{Path(script[1]).parent.as_posix()}/style.css"', page)
 
     def test_update_and_rollback_keep_previous_release_assets(self):
@@ -166,6 +169,48 @@ class BuildTests(unittest.TestCase):
                 publish(source, self.output)
         self.assertEqual(self.read("app/index.html"), previous)
         self.assertFalse(list(self.output.rglob(".murmur-*")))
+
+    def test_interrupted_release_copy_can_be_retried(self):
+        source = self.root / "staged-release"
+        files = {name: b"disposable release fixture" for name in APP_ASSETS}
+        version = release_id(files)
+        for name, body in files.items():
+            path = source / "app/releases" / version / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(body)
+        (source / "app/index.html").write_text("new entrypoint")
+        original = shutil.copyfile
+        copied = 0
+
+        def interrupted(*arguments, **keywords):
+            nonlocal copied
+            copied += 1
+            if copied == 2:
+                raise OSError("Disposable interrupted asset copy")
+            return original(*arguments, **keywords)
+
+        with patch("build.shutil.copyfile", side_effect=interrupted):
+            with self.assertRaisesRegex(OSError, "interrupted"):
+                publish(source, self.output)
+        publish(source, self.output)
+        self.assertEqual(self.read("app/index.html"), "new entrypoint")
+        for name, body in files.items():
+            self.assertEqual((self.output / "app/releases" / version / name).read_bytes(), body)
+
+    def test_release_inventory_can_grow_without_invalidating_older_versions(self):
+        source = self.root / "additional-module"
+        files = {name: b"disposable release fixture" for name in APP_ASSETS}
+        for extra in (False, True):
+            if extra:
+                files["new-feature.mjs"] = b"export const feature = true;"
+            version = release_id(files)
+            for name, body in files.items():
+                path = source / "app/releases" / version / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(body)
+        publish(source, self.output)
+        self.assertEqual((self.output / "app/releases" / version / "new-feature.mjs").read_bytes(),
+                         files["new-feature.mjs"])
 
     def test_platforms_are_planned_without_fake_downloads(self):
         rows = re.findall(r"<tr>(.*?)</tr>", self.read("platforms.html"), re.S)

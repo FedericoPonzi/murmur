@@ -6,7 +6,7 @@ import re
 import subprocess
 import tempfile
 import zipfile
-from build import APP_ASSETS, validate_release
+from build import validate_release
 
 
 SITE_FILES = {
@@ -80,8 +80,7 @@ def make_bundle(repository, destination, metadata, provenance, rust_notices):
     releases = site / "app/releases"
     if releases.exists():
         for directory in releases.iterdir():
-            validate_release(directory)
-            expected.update(f"app/releases/{directory.name}/{name}" for name in APP_ASSETS)
+            expected.update(f"app/releases/{directory.name}/{name}" for name in validate_release(directory))
     actual = {path.relative_to(site).as_posix() for path in paths if path.is_file()}
     if actual != expected:
         raise ValueError(f"Unexpected or missing preview assets: {sorted(actual ^ expected)}")

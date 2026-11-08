@@ -1,5 +1,6 @@
 import { controller } from './test-worker.mjs';
 import { storage_snapshot } from './storage-snapshot.mjs';
+import { rememberSession } from './device-session.mjs';
 
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const rejects = async operation => {
@@ -65,6 +66,24 @@ try {
   await node.call('draft', '');
   await node.call('stop');
   assert((await node.call('unlock', { passphrase: credentials.passphrase })).identity.draft === '', 'Cleared draft came back.');
+  await node.call('stop');
+  await node.call('unlock', { ...credentials, remember: true });
+  assert(await node.call('has_remembered'), 'Remember choice did not persist.');
+  node.terminate();
+  node = controller();
+  const resumed = await node.call('resume', {});
+  assert(resumed.identity.record_key === identity.record_key && resumed.identity.draft === '',
+    'A fresh worker could not resume the remembered identity.');
+  await node.call('stop');
+  await rememberSession(credentials.passphrase, 'VLD0:another-identity');
+  await rejects(() => node.call('resume', {}));
+  assert(await node.call('has_remembered'), 'Failed binding check silently removed remembered access.');
+  await node.call('unlock', { ...credentials, remember: true });
+  await node.call('logout');
+  assert(!await node.call('has_remembered'), 'Logout retained device access.');
+  await rejects(() => node.call('resume', {}));
+  assert((await node.call('unlock', credentials)).identity.record_key === identity.record_key,
+    'Logout deleted or replaced the identity.');
   await node.call('stop');
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {

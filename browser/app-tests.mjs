@@ -6,7 +6,7 @@ const wait = async condition => {
     await new Promise(resolve => setTimeout(resolve, 20));
   }
 };
-function installWorker() {
+function installWorker(existing = false) {
   window.networkReady = false;
   localStorage.setItem('murmur-follows-v1', JSON.stringify({ version: 1, follows: ['VLD0:existing'] }));
   window.authorStarts = 0;
@@ -26,7 +26,7 @@ function installWorker() {
       }
       if (action === 'update_profile') Object.assign(identity, value);
       const results = {
-        has_storage: false, has_remembered: false, create: { starts: 1, protected: true, identity },
+        has_storage: existing, has_remembered: false, create: { starts: 1, protected: true, identity },
         restore: { starts: 2, protected: true, identity },
         status: { ready: window.networkReady, attachment: window.networkReady ? 'AttachedStrong' : 'Attaching',
           live_peers: '7', reliable_peers: '4', download_bps: '1200', upload_bps: '32' }, identity: identity.record_key,
@@ -65,7 +65,8 @@ function installWorker() {
           ? window.failOlder === 'expired' ? 'Retained feed window changed; refresh the feed.' : 'Older page unavailable; retry' : undefined;
       if (action === 'read' && value !== 'VLD0:existing') results.read.metadata.latest_post_index = 0;
       const respond = () => { if (!this.terminated) this.onmessage({ data: { id, result: results[action], error } }); };
-      if (action === 'read_page' && value.cursor && window.deferOlder) window.resolveOlder = respond;
+      if (action === 'has_remembered' && existing) window.resolveRemember = respond;
+      else if (action === 'read_page' && value.cursor && window.deferOlder) window.resolveOlder = respond;
       else queueMicrotask(respond);
     }
     terminate() { this.terminated = true; }
@@ -114,12 +115,19 @@ try {
   frame.contentWindow.failDraft = true;
   element('content').value = 'An unsaved draft before connecting';
   element('content').dispatchEvent(new Event('input'));
+  const unsavedClose = new Event('beforeunload', { cancelable: true });
+  frame.contentWindow.dispatchEvent(unsavedClose);
+  assert(unsavedClose.defaultPrevented, 'Reload can discard an unsaved draft without a warning.');
   element('stop').click();
   await wait(() => element('status').textContent.startsWith('Logout cancelled'));
   frame.contentWindow.failDraft = false;
   const draft = 'A draft typed while connecting';
   element('content').value = draft;
   element('content').dispatchEvent(new Event('input'));
+  await wait(() => element('draft-status').textContent === 'Draft saved on this browser.');
+  const savedClose = new Event('beforeunload', { cancelable: true });
+  frame.contentWindow.dispatchEvent(savedClose);
+  assert(!savedClose.defaultPrevented, 'Saved work still blocks reload.');
   await wait(() => element('draft-status')?.textContent === 'Draft saved on this browser.');
   element('nav-profile').click();
   assert(!element('view-profile').hidden && element('view-home').hidden, 'Profile navigation did not change views.');
@@ -375,6 +383,12 @@ try {
   await wait(() => !element('session').hidden);
   assert(element('follow-list').children.length === 0, 'Unreadable follows left an old list visible.');
   assert(!element('reset-follows').hidden, 'Unreadable follows cannot be reset explicitly.');
+  frame.srcdoc = source.replace(script, `<script>(${installWorker.toString()})(true);</script>${script}`);
+  await wait(() => frame.contentWindow.resolveRemember);
+  assert(element('unlock-start').disabled && element('browse-start').disabled,
+    'Manual startup can race automatic remembered-access discovery.');
+  frame.contentWindow.resolveRemember();
+  await wait(() => !element('unlock-start').disabled);
   document.getElementById('result').textContent = 'passed';
 } catch (failure) {
   document.getElementById('result').textContent = `failed: ${failure.stack ?? failure.message}`;

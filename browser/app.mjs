@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 let worker, sequence = 0, polling, generation = 0;
 let active = false, attached = false, busy = false, authenticating = true, mode = 'create';
 let publicIdentity, draftTimer, draftVersion = 0, guest = false;
+let draftDirty = false;
 let refreshTask;
 let pendingFeed, unreadCount = 0;
 let lastNodeState, lastChecked;
@@ -428,6 +429,7 @@ const finish = (message, failure = false) => {
   clearInterval(polling);
   clearTimeout(draftTimer);
   draftVersion++;
+  draftDirty = false;
   if (refreshTask) refreshTask.cancelled = true;
   refreshTask = undefined;
   feedProgress.clear();
@@ -662,7 +664,10 @@ const saveDraft = async () => {
   $('draft-status').textContent = 'Saving draft...';
   try {
     await call('draft', $('content').value);
-    if (run === generation && version === draftVersion) $('draft-status').textContent = 'Draft saved on this browser.';
+    if (run === generation && version === draftVersion) {
+      draftDirty = false;
+      $('draft-status').textContent = 'Draft saved on this browser.';
+    }
     return true;
   } catch (failure) {
     if (run === generation && version === draftVersion) $('draft-status').textContent = `Draft not saved: ${failure.message}`;
@@ -670,12 +675,18 @@ const saveDraft = async () => {
   }
 };
 $('content').oninput = () => {
+  draftDirty = true;
   controls();
   draftVersion++;
   clearTimeout(draftTimer);
   $('draft-status').textContent = 'Draft has unsaved changes.';
   draftTimer = setTimeout(saveDraft, 300);
 };
+window.addEventListener('beforeunload', event => {
+  if (!draftDirty) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 $('profile-form').onsubmit = async event => {
   event.preventDefault();
   if (busy || !attached) return;
@@ -894,22 +905,29 @@ for (const [button, action, input] of [['publish', 'publish', 'content'], ['read
 try {
   makeWorker();
   const exists = await call('has_storage', undefined, 10000);
-  authenticating = false;
   showMode(exists ? 'unlock' : 'create');
-  controls();
   $('status').textContent = exists ? 'Your identity is locked.' : 'Create a local identity to get started.';
   try {
     const requested = sharedFeed(location.href);
     if (requested !== null) {
       pendingFeed = await call('check_key', requested, 30000);
       $('key').value = pendingFeed;
+      authenticating = false;
+      controls();
       $('browse-start').click();
-    } else if (exists && await call('has_remembered')) {
-      $('remember-device').checked = true;
-      $('resume-session').hidden = $('forget-device').hidden = false;
-      await authenticate('resume', {});
+    } else {
+      const remembered = exists && await call('has_remembered');
+      authenticating = false;
+      controls();
+      if (remembered) {
+        $('remember-device').checked = true;
+        $('resume-session').hidden = $('forget-device').hidden = false;
+        await authenticate('resume', {});
+      }
     }
   } catch (failure) {
+    authenticating = false;
+    controls();
     $('auth-error').textContent = failure.message;
     $('status').textContent = `Startup failed: ${failure.message}`;
     $('forget-device').hidden = false;
