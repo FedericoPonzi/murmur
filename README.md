@@ -1,61 +1,39 @@
 # Murmur
 
-**Proof of Concept, not production software.** A minimal Rust micro-blog using
-an embedded Veilid node, a read-only Axum browser bridge, and local CLI publishing.
-No external `veilid-server`, JavaScript build step, or browser extension is needed.
+Murmur is a peer-to-peer microblogging proof of concept built with Rust and
+[Veilid](https://veilid.com/). Publish short posts and follow feeds by their
+RecordKey, without a central account service.
 
-## Ubuntu VPS quick start
+The browser app runs its own Veilid node through WebAssembly. Identities and
+author credentials stay in the browser; the website serves only static files.
 
-Install a current stable Rust toolchain with [rustup](https://rustup.rs), then:
+## Getting started
 
-```sh
-sudo apt-get update
-sudo apt-get install -y build-essential pkg-config ca-certificates
-cargo build --release
-./target/release/murmur --data-dir "$HOME/.local/share/murmur" serve
-```
-
-Allow `8080/tcp` for the web UI and `5150/tcp` + `5150/udp` for Veilid in your
-VPS/cloud firewall. If UFW is already enabled:
+From a successful **Actions > CI** run, download the **murmur-local-preview**
+artifact and extract its inner ZIP. In the extracted `murmur-local-preview`
+directory, run:
 
 ```sh
-sudo ufw allow 8080/tcp
-sudo ufw allow 5150/tcp
-sudo ufw allow 5150/udp
+python3 serve.py
 ```
 
-Preserve your SSH firewall rule. Outbound DNS and Internet access are required.
-Wait for the `Murmur ready` log, then open `http://<vps-ip>:8080`. From another
-SSH session, publish with the same data directory:
+Open `http://localhost:8000/app/`. Python 3.10+ is required; the prebuilt preview
+needs no Rust installation.
 
-```sh
-./target/release/murmur --data-dir "$HOME/.local/share/murmur" post "Hello from Murmur"
-```
+To build from source, follow the [browser build instructions](docs/browser-probe.md#build-and-open),
+then [assemble the website with the app](docs/dev-guide.md#website-preview).
 
-Share the RecordKey displayed in the UI; paste another author's key to read
-their feed. HTTP cannot publish. Keep `serve` running (use your usual terminal
-multiplexer or service manager); Ctrl+C/SIGTERM shuts it down gracefully.
+The native CLI and read-only HTTP bridge remain available as an alternative
+(`cargo build --release`); see the [native user guide](docs/user-guide.md).
 
-The PoC retains 100 posts and displays the newest 20. Posts are public to anyone
-with the RecordKey; HTTP is unencrypted. Local writer keys are stored in private
-files, **not a secure vault**. Back up the entire data directory and never share
-`murmur_config.json`. Network availability and permanent DHT retention are
-not guaranteed.
+## Known limitation
 
-The pinned dependencies use Rustls and bundled native libraries: `libssl-dev`
-and a Cap'n Proto compiler are not required for the normal locked build.
-See [user guide](docs/user-guide.md) and [developer guide](docs/dev-guide.md)
-for profile configuration, API details, testing, and build troubleshooting.
-
-## Website preview
-
-The Genereto site hosts these guides and the current platform status.
-It can include the developer browser probe at `/app/`; the full browser alpha
-is still in development.
-See [building the website](docs/dev-guide.md#website-preview).
+The browser app currently uses plain WebSockets and does not support HTTPS
+deployment. Upstream Veilid's
+[HTTPS browser support and outbound relays remain unfinished](https://gitlab.com/veilid/veilid/-/blob/main/veilid-wasm/README.md#running-wasm-on-https-sites-not-currently-implemented);
+see the related open issue [veilid/veilid#430](https://gitlab.com/veilid/veilid/-/issues/430).
 
 ## License
 
-Murmur's own code is [MIT licensed](LICENSE). Dependencies retain their own
-licenses, including Veilid's MPL-2.0. Redistribution must preserve applicable
-notices and satisfy each dependency's license obligations.
+Murmur is [MIT licensed](LICENSE). Dependencies retain their own licenses,
+including Veilid's MPL-2.0.
