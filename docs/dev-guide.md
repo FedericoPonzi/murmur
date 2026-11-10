@@ -115,6 +115,13 @@ fallbacks in `website/license-notices` come from their upstream licenses:
 and [Tsify](https://github.com/madonoharu/tsify/blob/747541cfa11cb9002f8c58fa668fd13065282c0a/LICENSE_MIT).
 MPL-2.0 and Unlicense fallbacks reuse their corresponding included license texts.
 
+## VPS deployment
+
+Successful `main` builds are uploaded with rsync to
+`deployer@HOST:/data/www/murmur/`. Set the Actions variable `HOST` and secret
+`SSH_PRIVATE_KEY`; host keys are collected with `ssh-keyscan`.
+The destination must exist and be writable by `deployer`.
+
 ## Identity and embedded node
 
 `murmur [--data-dir PATH] serve` acquires an OS file lock before opening stores.
